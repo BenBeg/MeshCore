@@ -91,7 +91,7 @@ Implemented on the feature branch:
 - Room and Repeater use independent ACL instances and files. Repeater ACL remains on InternalFS at `/s_contacts`; Room ACL is on the dedicated ExtraFS at `/room_contacts`.
 - Both standard advert types are signed by their respective identities; Room discovery responses are supported and Room advertisements are staggered from Repeater advertisements.
 - Room login, standard request handling, text posts, ACK handling, CLI replies and post synchronization have been integrated into the Repeater application.
-- Room service transmissions use an explicit lower queue priority (4) than normal Repeater forwarding/control traffic (0–3); Room ACKs use priority 1. The shared packet manager and Dispatcher remain the only TX scheduler.
+- All Room service transmissions, including ACKs, use queue priority 4, below normal Repeater forwarding/control traffic (priorities 0–3). The shared packet manager and Dispatcher remain the only TX scheduler.
 - Room post storage and Room contacts use the dedicated 100 KiB ExtraFS; Repeater settings, Repeater contacts and both identity files remain on the original InternalFS.
 - Room posts use a two-slot LittleFS journal on ExtraFS with per-record checksums, generation selection, bounded compaction at 48 KiB, recovery of valid records before a corrupt/truncated tail, and no ACK until the new post has been written. The service retains the latest 32 posts for client synchronization.
 - The SenseCAP Solar Repeater target reserves and mounts the 100 KiB ExtraFS region at `0xD4000`–`0xED000`, using `nrf52840_s140_v7_extrafs.ld`. The existing 28 KiB InternalFS at `0xED000` remains available for the Repeater's existing settings and identities. Room contacts and posts use ExtraFS.
