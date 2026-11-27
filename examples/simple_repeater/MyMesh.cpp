@@ -1079,6 +1079,7 @@ bool MyMesh::processRoomAck(const uint8_t* data) {
       client->extra.room.pending_ack = 0;
       client->extra.room.push_failures = 0;
       client->extra.room.sync_since = client->extra.room.push_post_timestamp;
+      room_dirty_contacts_expiry = futureMillis(5000);
       room_next_push = futureMillis(100);
       return true;
     }
@@ -1293,7 +1294,10 @@ void MyMesh::onRoomPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender_i
       uint32_t since = 0;
       if (len >= 9) memcpy(&since, &data[5], 4);
       else memcpy(&data[5], &since, 4);
-      if (since) client->extra.room.sync_since = since;
+      if (since && since != client->extra.room.sync_since) {
+        client->extra.room.sync_since = since;
+        room_dirty_contacts_expiry = futureMillis(5000);
+      }
       client->extra.room.pending_ack = 0;
       if (client->out_path_len != OUT_PATH_UNKNOWN) {
         uint32_t ack_hash;
