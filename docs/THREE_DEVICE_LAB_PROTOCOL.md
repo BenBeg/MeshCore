@@ -28,7 +28,7 @@ This protocol distinguishes source/build checks from actual over-the-air evidenc
 | D2 | ThinkNode M5 #1 | MeshCore client A; originates test messages and Room posts |
 | D3 | ThinkNode M5 #2 | MeshCore client B; receives/forwards test messages and reads Room posts |
 
-D2 and D3 must run official, unmodified MeshCore client/companion firmware for the entire comparison. The current factory Meshtastic firmware on either M5 is not a valid MeshCore interoperability control; convert them to official MeshCore firmware only after confirming the exact M5 hardware revision and supported target. Record firmware version, build date, device identity prefix and radio settings for each.
+D2 and D3 must run the official, unmodified MeshCore ThinkNode M5 BLE companion-radio firmware for the entire comparison. The repository contains the exact target `ThinkNode_M5_companion_radio_ble` in `variants/thinknode_m5/platformio.ini` (also present at the PR base commit). Build it from the upstream/base source with `pio run -e ThinkNode_M5_companion_radio_ble`, verify the M5 hardware revision first, and flash both M5s with this same official target. The current factory Meshtastic 2.7+ firmware is not a valid MeshCore interoperability control. Record firmware version, build date, device identity prefix and radio settings for each.
 
 Use the same D2/D3 firmware, region, frequency, bandwidth, spreading factor, coding rate, transmit-power setting and antenna arrangement in both phases. Do not change client settings between baseline and combined-firmware runs.
 
@@ -73,7 +73,7 @@ Do not publish private keys, QR codes containing secrets, admin passwords, full 
 
 The repository's PlatformIO configuration specifies `monitor_speed = 115200`. Use 115200 baud, 8 data bits, no parity, 1 stop bit unless the specific device firmware documentation says otherwise. Capture raw serial output with timestamps if the terminal supports them. Record the selected COM/tty port and device ID at the top of each log.
 
-The current SenseCAP target has `MESH_PACKET_LOGGING` and `MESH_DEBUG` commented out. Start with the normal production-like build and capture whatever boot/CLI diagnostics it actually emits. Do not assume packet-level logs exist. Before enabling either compile-time debug macro, inspect its implementation and output volume, then make a separate diagnostic build and rerun CI; debug builds are not the acceptance firmware.
+The current SenseCAP target has `MESH_PACKET_LOGGING` and `MESH_DEBUG` commented out. The ThinkNode M5 base target also has packet/debug macros commented out and defines `DISABLE_DIAGNOSTIC_OUTPUT`, so its normal BLE companion build should be treated as an app-evidence client, not a serial-debug source. Capture the SenseCAP's 115200-baud boot/CLI output and the official app's discovery/message/post screens. Do not assume packet-level logs exist. Before enabling compile-time debug macros or removing the M5 diagnostic-output disable flag, inspect their implementation and output volume, then make a separate diagnostic build and rerun CI; debug builds are not the vanilla acceptance firmware.
 
 If a device exposes no useful serial output, capture the app's event/status screens and note that the corresponding serial evidence is unavailable. Never invent or infer packet events from an app screenshot.
 
@@ -107,11 +107,11 @@ If the test location cannot create a reliable one-hop relay path, mark repeater-
 ### Firmware baseline
 
 - D1: upstream/vanilla MeshCore SenseCAP Solar Repeater source at the PR base commit `75b04ef06def54b348400cb1b138afb6749ffd4f`, built with a reviewed Canada-appropriate RF profile.
-- D2 and D3: official, unmodified MeshCore client/companion firmware for the exact M5 revision.
+- D2 and D3: official, unmodified MeshCore ThinkNode M5 BLE companion-radio firmware, target `ThinkNode_M5_companion_radio_ble`.
 - No Room Server service on D1.
 - Keep a recoverable copy of the original D1 firmware and configuration before any firmware change. Do not erase or format storage as part of baseline setup.
 
-The base-branch target is `SenseCap_Solar_repeater`. Its inherited generic radio default is not suitable for Canadian testing; explicitly verify the effective RF build flags before producing any test binary. Do not use a prebuilt binary unless its target, commit, region and RF settings are known.
+The base-branch target is `SenseCap_Solar_repeater`; the M5 client target is `ThinkNode_M5_companion_radio_ble`. The combined SenseCAP target is also `SenseCap_Solar_repeater` on the feature branch. Their source/build commands are `pio run -e SenseCap_Solar_repeater` and `pio run -e ThinkNode_M5_companion_radio_ble` from the corresponding checked-out source trees. The SenseCAP base-branch target inherits a generic radio default that is not suitable for Canadian testing; explicitly verify the effective RF build flags before producing any test binary. Do not use a prebuilt binary unless its target, commit, region and RF settings are known.
 
 ### Baseline procedure
 
