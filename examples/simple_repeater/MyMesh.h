@@ -85,6 +85,8 @@ struct NeighbourInfo {
 #define ROOM_SERVER_RESPONSE_DELAY 300
 #define ROOM_TXT_ACK_DELAY 200
 #define ROOM_TX_PRIORITY 4  // lower priority than Repeater forwarding/control (queue selects the lowest value)
+#define ROOM_MAX_PENDING_TX 4
+#define ROOM_RESERVED_FREE_PACKETS 4
 
 struct RoomPostInfo {
   mesh::Identity author;
@@ -248,8 +250,11 @@ public:
   }
 
   void sendFloodScoped(const TransportKey& scope, mesh::Packet* pkt, uint32_t delay_millis, uint8_t path_hash_size);
-  void sendRoomFloodScoped(const TransportKey& scope, mesh::Packet* pkt, uint32_t delay_millis, uint8_t path_hash_size, uint8_t priority = ROOM_TX_PRIORITY);
-  void sendRoomFloodReply(mesh::Packet* packet, unsigned long delay_millis, uint8_t path_hash_size, uint8_t priority = ROOM_TX_PRIORITY);
+  bool canQueueRoomPacket(mesh::Packet* packet);
+  bool sendRoomFloodScoped(const TransportKey& scope, mesh::Packet* pkt, uint32_t delay_millis, uint8_t path_hash_size, uint8_t priority = ROOM_TX_PRIORITY);
+  bool sendRoomFloodReply(mesh::Packet* packet, unsigned long delay_millis, uint8_t path_hash_size, uint8_t priority = ROOM_TX_PRIORITY);
+  bool sendRoomDirectPriority(mesh::Packet* packet, const uint8_t* path, uint8_t path_len, uint32_t delay_millis, uint8_t priority = ROOM_TX_PRIORITY);
+  bool sendRoomZeroHopPriority(mesh::Packet* packet, uint32_t delay_millis, uint8_t priority = ROOM_TX_PRIORITY);
 
   // CommonCLICallbacks
   void applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins) override;
