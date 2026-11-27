@@ -20,9 +20,13 @@ This fork adds a SenseCAP Solar–focused combined Repeater + Room Server implem
 ## Verification status
 
 - **Passed:** native unit tests and all 16 firmware targets on code commit `b84d188954dc0e79a9c2a73628be834e754d33dc`, including SenseCAP Solar and ThinkNode M5 BLE companion.
-- **New code awaiting CI:** Room post appends now reopen the journal and verify the exact record after flush/close before acknowledging the client. This addresses the File API's void-returning flush/close operations; a fresh CI run is required.
-- **Still required:** automated storage fault-injection/power-loss testing; real-device sleep, storage and radio tests; interoperability testing with official clients; Canadian ISED compliance verification.
+- **Passed:** Room post appends now reopen the journal and verify the exact record after flush/close before acknowledging the client. Native unit tests and all 16 firmware targets passed on `566e59cf0ba2e7356c1e653958374b5126391d5f`.
+- **Still required:** implement and run the automated storage fault-injection harness described in `docs/ROOM_STORAGE_FAILURE_INJECTION.md`, then perform sacrificial-device power-loss testing; real-device sleep, storage and radio tests; interoperability testing with official clients; Canadian ISED compliance verification.
 - **Not done:** no device has been flashed and the pull request has not been merged.
+
+## Storage failure-injection plan
+
+[ROOM_STORAGE_FAILURE_INJECTION.md](./docs/ROOM_STORAGE_FAILURE_INJECTION.md) defines the deterministic host-test and sacrificial-device matrix for interrupted compaction, short writes, corrupt/truncated tails, full storage, ACL slot failures, identity preservation, blank/nonblank mount failures and generation rollover. This is a test plan only; the fault-injection harness and physical tests are not yet implemented.
 
 ## Hardware validation protocol
 
