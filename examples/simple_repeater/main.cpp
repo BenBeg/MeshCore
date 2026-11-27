@@ -98,6 +98,10 @@ void setup() {
     store.save("_main", the_mesh.self_id);
   }
 
+  Serial.print("Repeater ID: ");
+  mesh::Utils::printHex(Serial, the_mesh.self_id.pub_key, PUB_KEY_SIZE); Serial.println();
+
+#if defined(ROOM_EXTRA_FS)
   mesh::LocalIdentity room_id;
   if (!store.load("_room", room_id)) {
     room_id = radio_new_identity();
@@ -118,11 +122,9 @@ void setup() {
     room_id = verify_room_id;
   }
   the_mesh.setRoomIdentity(room_id);
-
-  Serial.print("Repeater ID: ");
-  mesh::Utils::printHex(Serial, the_mesh.self_id.pub_key, PUB_KEY_SIZE); Serial.println();
   Serial.print("Room ID: ");
   mesh::Utils::printHex(Serial, the_mesh.getRoomIdentity().pub_key, PUB_KEY_SIZE); Serial.println();
+#endif
 
   command[0] = 0;
 #ifdef ETHERNET_ENABLED
@@ -152,7 +154,9 @@ void setup() {
   // send out initial zero hop Advertisement to the mesh
 #if ENABLE_ADVERT_ON_BOOT == 1
   the_mesh.sendSelfAdvertisement(16000, false);
+#if defined(ROOM_EXTRA_FS)
   the_mesh.sendRoomSelfAdvertisement(16500, false);
+#endif
 #endif
 
   board.onBootComplete();
