@@ -153,6 +153,7 @@ bool ClientACL::save(FILESYSTEM* fs, bool (*filter)(ClientInfo*)) {
 
 void ClientACL::loadAtomic(FILESYSTEM* fs, const mesh::LocalIdentity& self_id) {
   _fs = fs;
+  _atomic_mode = true;
   char paths[2][48];
   snprintf(paths[0], sizeof(paths[0]), "%s.0", _storage_path);
   snprintf(paths[1], sizeof(paths[1]), "%s.1", _storage_path);
@@ -218,6 +219,7 @@ void ClientACL::loadAtomic(FILESYSTEM* fs, const mesh::LocalIdentity& self_id) {
 
 bool ClientACL::saveAtomic(FILESYSTEM* fs, bool (*filter)(ClientInfo*)) {
   _fs = fs;
+  _atomic_mode = true;
   char paths[2][48];
   snprintf(paths[0], sizeof(paths[0]), "%s.0", _storage_path);
   snprintf(paths[1], sizeof(paths[1]), "%s.1", _storage_path);
@@ -265,6 +267,30 @@ bool ClientACL::saveAtomic(FILESYSTEM* fs, bool (*filter)(ClientInfo*)) {
 
 bool ClientACL::clear() {
   if (!_fs) return false; // no filesystem, nothing to clear
+
+  if (_atomic_mode) {
+    // Commit an empty, checksummed generation before removing the previous
+    // slot. If power is lost during the operation, loadAtomic selects either
+    // the old complete ACL or this newer empty ACL; it never revives an older
+    // contact snapshot after a completed clear.
+    int previous_count = num_clients;
+    num_clients = 0;
+    if (!saveAtomic(_fs)) {
+      num_clients = previous_count;
+      return false;
+    }
+
+    memset(clients, 0, sizeof(clients));
+    char stale_path[48];
+    snprintf(stale_path, sizeof(stale_path), "%s.%d", _storage_path, 1 - _atomic_slot);
+    bool success = true;
+    if (_fs->exists(stale_path) && !_fs->remove(stale_path)) success = false;
+    // Atomic slots are authoritative; removing a legacy file is cleanup only.
+    if (_fs->exists(_storage_path) && !_fs->remove(_storage_path)) success = false;
+    return success;
+  }
+
+  // Preserve the original single-file Repeater ACL behavior.
   bool success = true;
   char slot_path[48];
   for (int i = 0; i < 2; i++) {
