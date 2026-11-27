@@ -52,29 +52,30 @@ void ClientACL::load(FILESYSTEM* fs, const mesh::LocalIdentity& self_id) {
   }
 }
 
-void ClientACL::save(FILESYSTEM* fs, bool (*filter)(ClientInfo*)) {
+bool ClientACL::save(FILESYSTEM* fs, bool (*filter)(ClientInfo*)) {
   _fs = fs;
   File file = openWrite(_fs, _storage_path);
-  if (file) {
-    uint8_t unused[2];
-    memset(unused, 0, sizeof(unused));
+  if (!file) return false;
 
-    for (int i = 0; i < num_clients; i++) {
-      auto c = &clients[i];
-      if (c->permissions == 0 || (filter && !filter(c))) continue;    // skip deleted entries, or by filter function
+  uint8_t unused[2];
+  memset(unused, 0, sizeof(unused));
+  bool success = true;
+  for (int i = 0; i < num_clients; i++) {
+    auto c = &clients[i];
+    if (c->permissions == 0 || (filter && !filter(c))) continue;    // skip deleted entries, or by filter function
 
-      bool success = (file.write(c->id.pub_key, 32) == 32);
-      success = success && (file.write((uint8_t *) &c->permissions, 1) == 1);
-      success = success && (file.write((uint8_t *) &c->extra.room.sync_since, 4) == 4);
-      success = success && (file.write(unused, 2) == 2);
-      success = success && (file.write((uint8_t *)&c->out_path_len, 1) == 1);
-      success = success && (file.write(c->out_path, 64) == 64);
-      success = success && (file.write(c->shared_secret, PUB_KEY_SIZE) == PUB_KEY_SIZE);
-
-      if (!success) break; // write failed
-    }
-    file.close();
+    success = (file.write(c->id.pub_key, 32) == 32);
+    success = success && (file.write((uint8_t *) &c->permissions, 1) == 1);
+    success = success && (file.write((uint8_t *) &c->extra.room.sync_since, 4) == 4);
+    success = success && (file.write(unused, 2) == 2);
+    success = success && (file.write((uint8_t *)&c->out_path_len, 1) == 1);
+    success = success && (file.write(c->out_path, 64) == 64);
+    success = success && (file.write(c->shared_secret, PUB_KEY_SIZE) == PUB_KEY_SIZE);
+    if (!success) break;
   }
+  file.flush();
+  file.close();
+  return success;
 }
 
 bool ClientACL::clear() {
