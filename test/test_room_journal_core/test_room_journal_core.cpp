@@ -189,7 +189,7 @@ public:
   bool openRead(const char* path){if(fail_open_read||files.find(path)==files.end())return false;active_path=path;opened=true;append_mode=false;cursor=0;return true;}
   bool openAppend(const char* path){if(fail_open_append)return false;active_path=path;opened=true;append_mode=true;cursor=files[path].size();return true;}
   size_t read(uint8_t* data,size_t len){if(!opened||fail_read)return 0;auto& b=files[active_path];size_t n=std::min(len,b.size()>cursor?b.size()-cursor:0);if(n)memcpy(data,b.data()+cursor,n);cursor+=n;return n;}
-  size_t write(const uint8_t* data,size_t len){if(!opened)return 0;write_call++;size_t n=len;if(write_call==short_write_call)n=std::min(n,short_write_bytes);auto& b=files[active_path];if(append_mode){b.insert(b.end(),data,data+n);cursor=b.size();}else{if(cursor+n>b.size())b.resize(cursor+n);if(n)memcpy(b.data()+cursor,data,n);cursor+=n;}return n;}
+  size_t write(const uint8_t* data,size_t len){if(!opened)return 0;write_call++;size_t n=len;if(write_call==short_write_call)n=std::min(n,short_write_bytes);auto& b=files[active_path];if(cursor+n>b.size())b.resize(cursor+n);if(n)memcpy(b.data()+cursor,data,n);cursor+=n;return n;}
   bool seek(uint32_t offset){if(!opened||fail_seek)return false;cursor=offset;return true;}
   uint32_t size(){return opened?(uint32_t)files[active_path].size():0;}
   bool flush(){return opened&&!fail_flush;}
