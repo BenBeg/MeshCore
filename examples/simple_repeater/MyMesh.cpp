@@ -383,6 +383,20 @@ mesh::Packet *MyMesh::createSelfAdvert() {
   return createAdvert(self_id, app_data, app_data_len);
 }
 
+mesh::Packet *MyMesh::createRoomAdvert() {
+  uint8_t app_data[MAX_ADVERT_DATA_SIZE];
+  uint8_t app_data_len = _cli.buildAdvertData(ADV_TYPE_ROOM, app_data);
+  return createAdvert(room_id, app_data, app_data_len);
+}
+
+void MyMesh::sendRoomSelfAdvertisement(int delay_millis, bool flood) {
+  mesh::Packet* pkt = createRoomAdvert();
+  if (!pkt) return;
+  if (flood) sendFloodScoped(default_scope, pkt, delay_millis, _prefs.path_hash_mode + 1);
+  else sendZeroHop(pkt, delay_millis);
+}
+
+
 File MyMesh::openAppend(const char *fname) {
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
   return _fs->open(fname, FILE_O_WRITE);
@@ -921,6 +935,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   last_millis = 0;
   uptime_millis = 0;
   next_local_advert = next_flood_advert = 0;
+  room_next_local_advert = room_next_flood_advert = 0;
   dirty_contacts_expiry = 0;
   set_radio_at = revert_radio_at = 0;
   _logging = false;
@@ -1090,18 +1105,20 @@ void MyMesh::sendSelfAdvertisement(int delay_millis, bool flood) {
 }
 
 void MyMesh::updateAdvertTimer() {
-  if (_prefs.advert_interval > 0) { // schedule local advert timer
+  if (_prefs.advert_interval > 0) {
     next_local_advert = futureMillis(((uint32_t)_prefs.advert_interval) * 2 * 60 * 1000);
+    room_next_local_advert = futureMillis(((uint32_t)_prefs.advert_interval) * 2 * 60 * 1000 + 30000);
   } else {
-    next_local_advert = 0; // stop the timer
+    next_local_advert = room_next_local_advert = 0;
   }
 }
 
 void MyMesh::updateFloodAdvertTimer() {
-  if (_prefs.flood_advert_interval > 0) { // schedule flood advert timer
+  if (_prefs.flood_advert_interval > 0) {
     next_flood_advert = futureMillis(((uint32_t)_prefs.flood_advert_interval) * 60 * 60 * 1000);
+    room_next_flood_advert = futureMillis(((uint32_t)_prefs.flood_advert_interval) * 60 * 60 * 1000 + 60000);
   } else {
-    next_flood_advert = 0; // stop the timer
+    next_flood_advert = room_next_flood_advert = 0;
   }
 }
 
@@ -1351,6 +1368,20 @@ void MyMesh::loop() {
     if (pkt) sendZeroHop(pkt);
 
     updateAdvertTimer(); // schedule next local advert
+  }
+
+  if (room_next_flood_advert && millisHasNowPassed(room_next_flood_advert)) {
+    mesh::Packet* pkt = createRoomAdvert();
+    if (pkt) sendFloodScoped(default_scope, pkt, 0, _prefs.path_hash_mode + 1);
+    room_next_flood_advert = _prefs.flood_advert_interval > 0
+      ? futureMillis(((uint32_t)_prefs.flood_advert_interval) * 60 * 60 * 1000 + 60000) : 0;
+    room_next_local_advert = _prefs.advert_interval > 0
+      ? futureMillis(((uint32_t)_prefs.advert_interval) * 2 * 60 * 1000 + 30000) : 0;
+  } else if (room_next_local_advert && millisHasNowPassed(room_next_local_advert)) {
+    mesh::Packet* pkt = createRoomAdvert();
+    if (pkt) sendZeroHop(pkt);
+    room_next_local_advert = _prefs.advert_interval > 0
+      ? futureMillis(((uint32_t)_prefs.advert_interval) * 2 * 60 * 1000 + 30000) : 0;
   }
 
   if (set_radio_at && millisHasNowPassed(set_radio_at)) { // apply pending (temporary) radio params
