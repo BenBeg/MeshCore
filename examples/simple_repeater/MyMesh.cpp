@@ -822,7 +822,7 @@ bool MyMesh::roomStorePost(const mesh::Identity& author, const char* text) {
   post.post_timestamp = getRTCClock()->getCurrentTimeUnique();
   post.sequence = ++room_next_sequence;
 
-  File file = openRoomJournalAppend(_fs, roomJournalPath(room_journal_slot));
+  File file = openRoomJournalAppend(_room_fs, roomJournalPath(room_journal_slot));
   if (!file) {
     room_next_sequence--;
     room_journal_needs_compact = true;
@@ -847,7 +847,7 @@ bool MyMesh::roomStorePost(const mesh::Identity& author, const char* text) {
 }
 
 bool MyMesh::verifyRoomPostFile(uint8_t slot, uint32_t* generation, bool load_posts) {
-  File file = openRoomJournalRead(_fs, roomJournalPath(slot));
+  File file = openRoomJournalRead(_room_fs, roomJournalPath(slot));
   if (!file) return false;
   RoomJournalHeader header;
   bool ok = file.read((uint8_t*)&header, sizeof(header)) == sizeof(header);
@@ -920,7 +920,7 @@ bool MyMesh::verifyRoomPostFile(uint8_t slot, uint32_t* generation, bool load_po
 bool MyMesh::compactRoomPosts() {
   uint8_t target = room_journal_ready ? (uint8_t)(1 - room_journal_slot) : 0;
   const char* path = roomJournalPath(target);
-  if (_fs->exists(path)) _fs->remove(path);
+  if (_room_fs->exists(path)) _room_fs->remove(path);
 
   RoomJournalHeader header = {};
   header.magic = ROOM_JOURNAL_MAGIC;
@@ -959,12 +959,12 @@ bool MyMesh::compactRoomPosts() {
   room_journal_generation = verified_generation;
   room_journal_ready = true;
   room_journal_needs_compact = false;
-  File verify = openRoomJournalRead(_fs, path);
+  File verify = openRoomJournalRead(_room_fs, path);
   room_journal_size = verify ? verify.size() : 0;
   if (verify) verify.close();
   if (had_old && old_slot != target) {
     const char* old_path = roomJournalPath(old_slot);
-    if (_fs->exists(old_path)) _fs->remove(old_path);
+    if (_room_fs->exists(old_path)) _room_fs->remove(old_path);
   }
   return true;
 }
@@ -1313,7 +1313,7 @@ void MyMesh::onAckRecv(mesh::Packet* packet, uint32_t ack_crc) {
 
 void MyMesh::roomLoop() {
   if (room_dirty_contacts_expiry && millisHasNowPassed(room_dirty_contacts_expiry)) {
-    room_acl.save(_fs);
+    room_acl.save(_room_fs);
     room_dirty_contacts_expiry = 0;
   }
   if (!room_next_push || !millisHasNowPassed(room_next_push) || room_acl.getNumClients() == 0) return;
@@ -1666,14 +1666,15 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   memset(default_scope.key, 0, sizeof(default_scope.key));
 }
 
-void MyMesh::begin(FILESYSTEM *fs) {
+void MyMesh::begin(FILESYSTEM *fs, FILESYSTEM *room_fs) {
   mesh::Mesh::begin();
   _fs = fs;
+  _room_fs = room_fs ? room_fs : fs;
   // load persisted prefs
   _cli.loadPrefs(_fs);
   acl.load(_fs, self_id);
   room_acl.setStoragePath("/room_contacts");
-  room_acl.load(_fs, room_id);
+  room_acl.load(_room_fs, room_id);
   loadRoomPosts();
   // TODO: key_store.begin();
   region_map.load(_fs);
