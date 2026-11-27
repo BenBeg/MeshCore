@@ -52,7 +52,12 @@ static bool readACLSlot(FILESYSTEM* fs, const char* path, ACLSlotHeader* header)
   uint8_t record[ACL_RECORD_SIZE];
   for (uint16_t i = 0; ok && i < h.count; i++) {
     ok = file.read(record, sizeof(record)) == sizeof(record);
-    if (ok) hash = aclHashUpdate(hash, record, sizeof(record));
+    if (ok) {
+      // Reject persisted path lengths that could make later path copies unsafe.
+      uint8_t path_len = record[39];
+      if (path_len != OUT_PATH_UNKNOWN && path_len > MAX_PATH_SIZE) ok = false;
+      if (ok) hash = aclHashUpdate(hash, record, sizeof(record));
+    }
   }
   if (ok) ok = hash == h.payload_hash && file.available() == 0;
   file.close();
@@ -183,15 +188,25 @@ void ClientACL::loadAtomic(FILESYSTEM* fs, const mesh::LocalIdentity& self_id) {
     return;
   }
 
+  // If either atomic slot exists but neither validates, do not fall back to
+  // the legacy file: it may be stale and could resurrect revoked contacts.
+  bool has_atomic_files = fs->exists(paths[0]) || fs->exists(paths[1]);
+  if (has_atomic_files) {
+    num_clients = 0;
+    return;
+  }
+
   // One-time migration from the legacy single-file format. Keep the old file
   // untouched until a complete, verified slot has been written.
   load(fs, self_id);
   _atomic_generation = 0;
   _atomic_slot = 1;
   if (num_clients > 0 && saveAtomic(fs)) {
-    // The verified slot is now authoritative; remove the stale legacy copy so
-    // a later dual-slot failure cannot resurrect revoked contacts.
-    fs->remove(_storage_path);
+    // The verified slot is now authoritative. A failed legacy-file removal is
+    // harmless because future boots never fall back when an atomic slot exists.
+    if (fs->exists(_storage_path) && !fs->remove(_storage_path)) {
+      MESH_DEBUG_PRINTLN("WARNING: could not remove legacy Room ACL after migration");
+    }
   }
 }
 

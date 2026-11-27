@@ -77,13 +77,10 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
 
   if (pkt->isRouteDirect() && pkt->getPathHashCount() > 0) {
     // check for 'early received' ACK
-    if (pkt->getPayloadType() == PAYLOAD_TYPE_ACK) {
-      int i = 0;
+    if (pkt->getPayloadType() == PAYLOAD_TYPE_ACK && pkt->payload_len >= 4) {
       uint32_t ack_crc;
-      memcpy(&ack_crc, &pkt->payload[i], 4); i += 4;
-      if (i <= pkt->payload_len) {
-        onAckRecv(pkt, ack_crc);
-      }
+      memcpy(&ack_crc, pkt->payload, sizeof(ack_crc));
+      onAckRecv(pkt, ack_crc);
     }
 
     if (self_id.isHashMatch(pkt->path, pkt->getPathHashSize()) && allowPacketForward(pkt)) {
@@ -115,12 +112,11 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
 
   switch (pkt->getPayloadType()) {
     case PAYLOAD_TYPE_ACK: {
-      int i = 0;
-      uint32_t ack_crc;
-      memcpy(&ack_crc, &pkt->payload[i], 4); i += 4;
-      if (i > pkt->payload_len) {
+      if (pkt->payload_len < sizeof(uint32_t)) {
         MESH_DEBUG_PRINTLN("%s Mesh::onRecvPacket(): incomplete ACK packet", getLogDateTime());
       } else if (!_tables->wasSeen(pkt)) {
+        uint32_t ack_crc;
+        memcpy(&ack_crc, pkt->payload, sizeof(ack_crc));
         _tables->markSeen(pkt);
         onAckRecv(pkt, ack_crc);
         action = routeRecvPacket(pkt);
@@ -131,6 +127,10 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
     case PAYLOAD_TYPE_REQ:
     case PAYLOAD_TYPE_RESPONSE:
     case PAYLOAD_TYPE_TXT_MSG: {
+      if (pkt->payload_len < 2) {
+        MESH_DEBUG_PRINTLN("%s Mesh::onRecvPacket(): incomplete data header", getLogDateTime());
+        break;
+      }
       int i = 0;
       uint8_t dest_hash = pkt->payload[i++];
       uint8_t src_hash = pkt->payload[i++];
@@ -171,7 +171,13 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
                 }
                 uint8_t hash_size = (path_len >> 6) + 1;
                 uint8_t hash_count = path_len & 63;
-                uint8_t* path = &data[k]; k += hash_size*hash_count;
+                uint16_t path_bytes = (uint16_t)hash_size * hash_count;
+                if ((uint16_t)k + path_bytes + 1 > (uint16_t)len) {
+                  MESH_DEBUG_PRINTLN("%s PAYLOAD_TYPE_PATH, truncated path payload", getLogDateTime());
+                  found = true; // authenticated but malformed; do not try another identity
+                  break;
+                }
+                uint8_t* path = &data[k]; k += path_bytes;
                 uint8_t extra_type = data[k++] & 0x0F;   // upper 4 bits reserved for future use
                 uint8_t* extra = &data[k];
                 uint8_t extra_len = len - k;   // remainder of packet (may be padded with zeroes!)
