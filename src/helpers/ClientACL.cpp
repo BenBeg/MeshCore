@@ -55,7 +55,7 @@ static bool readACLSlot(FILESYSTEM* fs, const char* path, ACLSlotHeader* header)
     if (ok) {
       // Reject persisted path lengths that could make later path copies unsafe.
       uint8_t path_len = record[39];
-      if (path_len != OUT_PATH_UNKNOWN && path_len > MAX_PATH_SIZE) ok = false;
+      if (path_len != OUT_PATH_UNKNOWN && !mesh::Packet::isValidPathLen(path_len)) ok = false;
       if (ok) hash = aclHashUpdate(hash, record, sizeof(record));
     }
   }
@@ -106,6 +106,12 @@ void ClientACL::load(FILESYSTEM* fs, const mesh::LocalIdentity& self_id) {
         if (!success) break; // EOF
 
         c.id = mesh::Identity(pub_key);
+        // The persisted path length is an encoded hash-size/count byte, not a
+        // byte count. If it is malformed, keep the contact but rediscover its route.
+        if (c.out_path_len != OUT_PATH_UNKNOWN && !mesh::Packet::isValidPathLen(c.out_path_len)) {
+          c.out_path_len = OUT_PATH_UNKNOWN;
+          memset(c.out_path, 0, sizeof(c.out_path));
+        }
         self_id.calcSharedSecret(c.shared_secret, pub_key);  // recalculate shared secrets in case our private key changed
         if (num_clients < MAX_CLIENTS) {
           clients[num_clients++] = c;
