@@ -63,7 +63,7 @@ public:
     _storage_path = (path && path[0]) ? path : "/s_contacts";
   }
   void load(FILESYSTEM* _fs, const mesh::LocalIdentity& self_id);
-  void save(FILESYSTEM* _fs, bool (*filter)(ClientInfo*)=NULL);
+  bool save(FILESYSTEM* _fs, bool (*filter)(ClientInfo*)=NULL);
   bool clear();
 
   ClientInfo* getClient(const uint8_t* pubkey, int key_len);
