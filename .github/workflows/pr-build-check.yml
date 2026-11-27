@@ -36,7 +36,7 @@ jobs:
           - RAK_4631_repeater_ethernet
           - RAK_4631_room_server
           - RAK_4631_room_server_ethernet
-          # SenseCAP Solar target used by the custom Repeater + Room build
+          # SenseCAP Solar integrated Repeater + Room target (compile gate before hardware validation)
           - SenseCap_Solar_repeater
           # RP2040
           - PicoW_repeater
