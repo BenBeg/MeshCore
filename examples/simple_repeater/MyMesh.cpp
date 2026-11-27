@@ -640,6 +640,50 @@ void MyMesh::getPeerSharedSecret(uint8_t *dest_secret, int peer_idx) {
   }
 }
 
+int MyMesh::searchPeersByHashForIdentity(const mesh::LocalIdentity& local_id, const uint8_t* hash) {
+  if (&local_id != &room_id) return searchPeersByHash(hash);
+  int n = 0;
+  for (int i = 0; i < room_acl.getNumClients(); i++) {
+    if (room_acl.getClientByIdx(i)->id.isHashMatch(hash)) {
+      room_matching_peer_indexes[n++] = i;
+    }
+  }
+  return n;
+}
+
+void MyMesh::getPeerSharedSecretForIdentity(const mesh::LocalIdentity& local_id, uint8_t* dest_secret, int peer_idx) {
+  if (&local_id != &room_id) {
+    getPeerSharedSecret(dest_secret, peer_idx);
+    return;
+  }
+  int i = room_matching_peer_indexes[peer_idx];
+  if (i >= 0 && i < room_acl.getNumClients()) {
+    memcpy(dest_secret, room_acl.getClientByIdx(i)->shared_secret, PUB_KEY_SIZE);
+  }
+}
+
+void MyMesh::onAnonDataRecvForIdentity(mesh::Packet* packet, const mesh::LocalIdentity& local_id,
+                                       const uint8_t* secret, const mesh::Identity& sender,
+                                       uint8_t* data, size_t len) {
+  if (&local_id == &room_id) return; // Room login handler is added with the Room service implementation.
+  onAnonDataRecv(packet, secret, sender, data, len);
+}
+
+void MyMesh::onPeerDataRecvForIdentity(mesh::Packet* packet, const mesh::LocalIdentity& local_id,
+                                       uint8_t type, int sender_idx, const uint8_t* secret,
+                                       uint8_t* data, size_t len) {
+  if (&local_id == &room_id) return; // Room peer handler is added with the Room service implementation.
+  onPeerDataRecv(packet, type, sender_idx, secret, data, len);
+}
+
+bool MyMesh::onPeerPathRecvForIdentity(mesh::Packet* packet, const mesh::LocalIdentity& local_id,
+                                       int sender_idx, const uint8_t* secret, uint8_t* path,
+                                       uint8_t path_len, uint8_t extra_type, uint8_t* extra,
+                                       uint8_t extra_len) {
+  if (&local_id == &room_id) return false;
+  return onPeerPathRecv(packet, sender_idx, secret, path, path_len, extra_type, extra, extra_len);
+}
+
 static bool isShare(const mesh::Packet *packet) {
   if (packet->hasTransportCodes()) {
     return packet->transport_codes[0] == 0 && packet->transport_codes[1] == 0;  // codes { 0, 0 } means 'send to nowhere'
@@ -948,6 +992,8 @@ void MyMesh::begin(FILESYSTEM *fs) {
   // load persisted prefs
   _cli.loadPrefs(_fs);
   acl.load(_fs, self_id);
+  room_acl.setStoragePath("/room_contacts");
+  room_acl.load(_fs, room_id);
   // TODO: key_store.begin();
   region_map.load(_fs);
 
