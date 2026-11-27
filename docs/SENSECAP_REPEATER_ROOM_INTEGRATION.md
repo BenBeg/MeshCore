@@ -91,6 +91,8 @@ Implemented on the feature branch:
 - Room and Repeater use independent ACL instances and files. Repeater ACL remains on InternalFS at `/s_contacts`; Room ACL is on the dedicated ExtraFS at `/room_contacts`.
 - Both standard advert types are signed by their respective identities; Room discovery responses are supported and Room advertisements are staggered from Repeater advertisements.
 - Room login, standard request handling, text posts, ACK handling, CLI replies and post synchronization have been integrated into the Repeater application.
+- Room service transmissions use an explicit lower queue priority (4) than normal Repeater forwarding/control traffic (0–3); Room ACKs use priority 1. The shared packet manager and Dispatcher remain the only TX scheduler.
+- Room post storage and Room contacts use the dedicated 100 KiB ExtraFS; Repeater settings, Repeater contacts and both identity files remain on the original InternalFS.
 - Room posts use a two-slot LittleFS journal with per-record checksums, generation selection, bounded compaction, recovery of valid records before a corrupt/truncated tail, and no ACK until the new post has been written.
 - The SenseCAP Solar Repeater target reserves and mounts the 100 KiB ExtraFS region at `0xD4000`–`0xED000`, using `nrf52840_s140_v7_extrafs.ld`. The existing 28 KiB InternalFS at `0xED000` remains available for the Repeater's existing settings and identities. Room contacts and posts use ExtraFS.
 - The SenseCAP Solar target now uses the MeshCore USA/Canada recommended interoperability preset: 910.525 MHz, SF7, 62.5 kHz bandwidth, CR5.
@@ -99,12 +101,13 @@ Storage source audit:
 - Adafruit InternalFS reserves seven 4 KiB pages (28,672 bytes).
 - MeshCore's nRF52 ExtraFS configuration reserves 0x19000 bytes (102,400 bytes) at 0xD4000, with 128-byte blocks.
 - CustomLFS uses LittleFS and automatically formats its configured region if mounting fails. The ExtraFS region is excluded from the application image by the alternate linker script.
+- The ExtraFS region is a reserved portion of the nRF52840 internal flash. It is not the separate 2 MB onboard flash listed in Seeed's board specification.
 - The ExtraFS configuration must be verified by the SenseCAP target build before flashing.
 
 ## Remaining implementation and verification
 
 - Build the SenseCap_Solar_repeater target and fix any compiler/linker issues.
-- Verify the exact P1-Pro radio certification and Canadian ISED operating conditions. The 910.525 MHz / 62.5 kHz preset is a MeshCore network interoperability setting, not proof of regulatory compliance. The P1-Pro product specification lists FCC and CE certifications; no ISED identifier has yet been verified. Do not treat the 22 dBm hardware TX capability as an approved Canadian operating power.
+- Verify the exact P1-Pro radio certification and Canadian ISED operating conditions. The 910.525 MHz / 62.5 kHz preset is a MeshCore network interoperability setting, not proof of regulatory compliance. RSS-247 Issue 4 specifies a 500 kHz minimum 6 dB bandwidth for its 902–928 MHz DTS route; the MeshCore preset is 62.5 kHz, so it cannot be assumed to qualify under that DTS clause. RSS-210 Annex B has a separate 902–928 MHz field-strength route. The P1-Pro product specification lists FCC and CE certifications; no ISED identifier has yet been verified. Do not treat the 22 dBm hardware TX capability as an approved Canadian operating power.
 - Confirm official Android/iOS clients can retain both identities from one physical device and validate Room discovery/login/post synchronization over the air.
 - Test power-loss recovery, full ExtraFS behavior, ACL persistence, and simultaneous Repeater/Room traffic.
 - Back up existing device firmware/data and verify a documented recovery route before hardware flashing.
