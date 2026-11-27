@@ -1,4 +1,5 @@
 #include "MyMesh.h"
+#include "helpers/RoomSequence.h"
 #include <stddef.h>
 #include <algorithm>
 
@@ -921,7 +922,7 @@ bool MyMesh::verifyRoomPostFile(uint8_t slot, uint32_t* generation, bool load_po
       post.text[record.text_len] = 0;
       room_next_post_idx = (room_next_post_idx + 1) % ROOM_MAX_UNSYNCED_POSTS;
       if (room_post_count < ROOM_MAX_UNSYNCED_POSTS) room_post_count++;
-      if (record.sequence > room_next_sequence) room_next_sequence = record.sequence;
+      if (roomSequenceIsNewer(record.sequence, room_next_sequence)) room_next_sequence = record.sequence;
     }
   }
   if (base_hash != header.base_checksum) { file.close(); return false; }
@@ -942,7 +943,7 @@ bool MyMesh::verifyRoomPostFile(uint8_t slot, uint32_t* generation, bool load_po
       post.text[record.text_len] = 0;
       room_next_post_idx = (room_next_post_idx + 1) % ROOM_MAX_UNSYNCED_POSTS;
       if (room_post_count < ROOM_MAX_UNSYNCED_POSTS) room_post_count++;
-      if (record.sequence > room_next_sequence) room_next_sequence = record.sequence;
+      if (roomSequenceIsNewer(record.sequence, room_next_sequence)) room_next_sequence = record.sequence;
     }
     room_num_posted = (uint16_t)room_next_sequence;
     room_journal_size = file.size();
