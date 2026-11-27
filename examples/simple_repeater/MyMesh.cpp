@@ -397,8 +397,8 @@ mesh::Packet *MyMesh::createRoomAdvert() {
 void MyMesh::sendRoomSelfAdvertisement(int delay_millis, bool flood) {
   mesh::Packet* pkt = createRoomAdvert();
   if (!pkt) return;
-  if (flood) sendFloodScoped(default_scope, pkt, delay_millis, _prefs.path_hash_mode + 1);
-  else sendZeroHop(pkt, delay_millis);
+  if (flood) sendRoomFloodScoped(default_scope, pkt, delay_millis, _prefs.path_hash_mode + 1);
+  else sendZeroHopPriority(pkt, delay_millis, ROOM_TX_PRIORITY);
 }
 
 
@@ -446,6 +446,24 @@ void MyMesh::sendFloodReply(mesh::Packet* packet, unsigned long delay_millis, ui
       break;
     case mesh::REPLY_SCOPE_NONE:
       sendFlood(packet, delay_millis, path_hash_size);  // send un-scoped
+      break;
+  }
+}
+
+void MyMesh::sendRoomFloodReply(mesh::Packet* packet, unsigned long delay_millis, uint8_t path_hash_size) {
+  TransportKey req_scope;
+  bool is_wildcard = recv_pkt_region != NULL && recv_pkt_region->isWildcard();
+  bool req_scope_known = recv_pkt_region != NULL && !is_wildcard
+                      && region_map.getTransportKeysFor(*recv_pkt_region, &req_scope, 1) > 0;
+  switch (mesh::chooseReplyScope(req_scope_known, is_wildcard, !default_scope.isNull())) {
+    case mesh::REPLY_SCOPE_REQUEST:
+      sendRoomFloodScoped(req_scope, packet, delay_millis, path_hash_size);
+      break;
+    case mesh::REPLY_SCOPE_DEFAULT:
+      sendRoomFloodScoped(default_scope, packet, delay_millis, path_hash_size);
+      break;
+    case mesh::REPLY_SCOPE_NONE:
+      sendFloodPriority(packet, delay_millis, path_hash_size, ROOM_TX_PRIORITY);
       break;
   }
 }
@@ -1025,10 +1043,10 @@ void MyMesh::roomPushPost(ClientInfo* client, RoomPostInfo& post) {
     return;
   }
   if (client->out_path_len == OUT_PATH_UNKNOWN) {
-    sendFloodScoped(default_scope, reply, 0, _prefs.path_hash_mode + 1);
+    sendRoomFloodScoped(default_scope, reply, 0, _prefs.path_hash_mode + 1);
     client->extra.room.ack_timeout = futureMillis(12000);
   } else {
-    sendDirect(reply, client->out_path, client->out_path_len);
+    sendDirectPriority(reply, client->out_path, client->out_path_len, 0, ROOM_TX_PRIORITY);
     uint8_t count = client->out_path_len & 63;
     client->extra.room.ack_timeout = futureMillis(4000 + 2000 * (count + 1));
   }
@@ -1102,7 +1120,7 @@ void MyMesh::onRoomAnonDataRecv(mesh::Packet* packet, const uint8_t* secret,
   if (packet->isRouteFlood()) {
     mesh::Packet* path = createPathReturn(room_id, sender, client->shared_secret,
         packet->path, packet->path_len, PAYLOAD_TYPE_RESPONSE, reply_data, 13);
-    if (path) sendFloodReply(path, ROOM_SERVER_RESPONSE_DELAY, packet->getPathHashSize());
+    if (path) sendRoomFloodReply(path, ROOM_SERVER_RESPONSE_DELAY, packet->getPathHashSize());
   } else {
     mesh::Packet* reply = createDatagram(room_id, PAYLOAD_TYPE_RESPONSE, sender,
         client->shared_secret, reply_data, 13);
@@ -1230,17 +1248,17 @@ void MyMesh::onRoomPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender_i
     if (send_ack) {
       if (client->out_path_len == OUT_PATH_UNKNOWN) {
         mesh::Packet* ack = createAck(ack_hash);
-        if (ack) sendFloodReply(ack, ROOM_TXT_ACK_DELAY, packet->getPathHashSize());
+        if (ack) sendRoomFloodReply(ack, ROOM_TXT_ACK_DELAY, packet->getPathHashSize());
         delay = ROOM_TXT_ACK_DELAY + 1500;
       } else {
         uint32_t d = ROOM_TXT_ACK_DELAY;
         if (getExtraAckTransmitCount() > 0) {
           mesh::Packet* a1 = createMultiAck(ack_hash, 1);
-          if (a1) sendDirect(a1, client->out_path, client->out_path_len, d);
+          if (a1) sendDirectPriority(a1, client->out_path, client->out_path_len, d, 1);
           d += 300;
         }
         mesh::Packet* a2 = createAck(ack_hash);
-        if (a2) sendDirect(a2, client->out_path, client->out_path_len, d);
+        if (a2) sendDirectPriority(a2, client->out_path, client->out_path_len, d, 1);
         delay = d + 1500;
       }
     }
@@ -1274,7 +1292,7 @@ void MyMesh::onRoomPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender_i
         auto ack = createAck(ack_hash);
         if (ack) {
           ack->payload[ack->payload_len++] = roomGetUnsyncedCount(client);
-          sendDirect(ack, client->out_path, client->out_path_len, ROOM_SERVER_RESPONSE_DELAY);
+          sendDirectPriority(ack, client->out_path, client->out_path_len, ROOM_SERVER_RESPONSE_DELAY, 1);
         }
       }
     } else {
@@ -1283,7 +1301,7 @@ void MyMesh::onRoomPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender_i
         if (packet->isRouteFlood()) {
           auto path = createPathReturn(room_id, client->id, secret, packet->path, packet->path_len,
                                        PAYLOAD_TYPE_RESPONSE, reply_data, n);
-          if (path) sendFloodReply(path, ROOM_SERVER_RESPONSE_DELAY, packet->getPathHashSize());
+          if (path) sendRoomFloodReply(path, ROOM_SERVER_RESPONSE_DELAY, packet->getPathHashSize());
         } else {
           auto reply = createDatagram(room_id, PAYLOAD_TYPE_RESPONSE, client->id, secret, reply_data, n);
           if (reply) {
@@ -1762,6 +1780,17 @@ void MyMesh::sendFloodScoped(const TransportKey& scope, mesh::Packet* pkt, uint3
     codes[0] = scope.calcTransportCode(pkt);
     codes[1] = 0;  // REVISIT: set to 'home' Region, for sender/return region?
     sendFlood(pkt, codes, delay_millis, path_hash_size);
+  }
+}
+
+void MyMesh::sendRoomFloodScoped(const TransportKey& scope, mesh::Packet* pkt, uint32_t delay_millis, uint8_t path_hash_size) {
+  if (scope.isNull()) {
+    sendFloodPriority(pkt, delay_millis, path_hash_size, ROOM_TX_PRIORITY);
+  } else {
+    uint16_t codes[2];
+    codes[0] = scope.calcTransportCode(pkt);
+    codes[1] = 0;
+    sendFloodPriority(pkt, codes, delay_millis, path_hash_size, ROOM_TX_PRIORITY);
   }
 }
 
