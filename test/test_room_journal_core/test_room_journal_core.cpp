@@ -234,7 +234,7 @@ TEST(RoomJournalTransactions, CompactionShortWritesAtEveryHeaderAndRecordBoundar
 
 TEST(RoomJournalTransactions, ProductionAppendHelperReadBackVerifiesExactRecord){
   FakeJournalStorage s;s.files["journal"]=makeJournal({makeRecord(130,"base")}).bytes;const Record appended=makeRecord(131,"append");
-  EXPECT_TRUE(roomJournalAppendVerified<FakeJournalStorage,Record>(s,"journal",appended));std::vector<uint32_t> seq;auto scan=verifyFake(s,"journal",seq);
+  EXPECT_TRUE((roomJournalAppendVerified<FakeJournalStorage,Record>(s,"journal",appended)));std::vector<uint32_t> seq;auto scan=verifyFake(s,"journal",seq);
   EXPECT_TRUE(scan.valid);ASSERT_EQ(2U,seq.size());EXPECT_EQ(131U,seq.back());
 }
 
@@ -244,7 +244,7 @@ TEST(RoomJournalTransactions, AppendFailuresAreNotAcknowledged){
     FakeJournalStorage s;s.files["journal"]=makeJournal({makeRecord(140,"base")}).bytes;
     if(failure==0)s.fail_open_append=true;if(failure==1)s.short_write_call=1,s.short_write_bytes=sizeof(Record)-1;
     if(failure==2)s.fail_flush=true;if(failure==3)s.fail_close=true;if(failure==4)s.fail_open_read=true;if(failure==5)s.fail_seek=true;if(failure==6)s.fail_read=true;
-    EXPECT_FALSE(roomJournalAppendVerified<FakeJournalStorage,Record>(s,"journal",appended))<<"failure="<<failure;
+    EXPECT_FALSE((roomJournalAppendVerified<FakeJournalStorage,Record>(s,"journal",appended)))<<"failure="<<failure;
   }
 }
 
