@@ -19,8 +19,8 @@ This fork adds a SenseCAP Solar–focused combined Repeater + Room Server implem
 
 ## Verification status
 
-- **Passed:** native unit-test workflow and SenseCap_Solar_repeater firmware build on commit `07aceda162d133803044e0962bf8af0b6e4844de`.
-- **Still required:** full supported-target build matrix on the final commit; fault-injection/power-loss testing; real-device sleep, storage and radio tests; interoperability testing with official clients; Canadian ISED compliance verification.
+- **Passed:** native unit tests and the complete 15-target firmware build matrix on commit `36f9b80f6d74b21eed5c65ca7323b347f4f250e0`.
+- **Still required:** fault-injection/power-loss testing; real-device sleep, storage and radio tests; interoperability testing with official clients; Canadian ISED compliance verification.
 - **Not done:** no device has been flashed and the pull request has not been merged.
 
 See [the integration design and verification notes](./docs/SENSECAP_REPEATER_ROOM_INTEGRATION.md) for architecture and remaining checks.

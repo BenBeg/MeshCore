@@ -1,6 +1,6 @@
 # SenseCAP Solar Repeater + Room Server Integration
 
-Status: implementation in progress. The SenseCAP Solar target build and native unit tests passed on commit 07aceda162d133803044e0962bf8af0b6e4844de; the full target-matrix and hardware validation remain outstanding.
+Status: implementation in progress. The full 15-target firmware matrix and native unit tests passed on commit 36f9b80f6d74b21eed5c65ca7323b347f4f250e0; hardware validation remains outstanding.
 
 Target branch: `feature/sensecap-repeater-room`
 Target PlatformIO environment: `SenseCap_Solar_repeater`
@@ -108,10 +108,10 @@ Storage source audit:
 
 ## Remaining implementation and verification
 
-- Run the full supported-target build matrix against the final feature-branch commit.
+- Repeat the full target matrix after any further firmware-code changes.
 - Verify the exact P1-Pro radio certification and Canadian ISED operating conditions. The 910.525 MHz / 62.5 kHz preset is a MeshCore network interoperability setting, not proof of regulatory compliance. RSS-247 Issue 4 specifies a 500 kHz minimum 6 dB bandwidth for its 902–928 MHz DTS route; the MeshCore preset is 62.5 kHz, so it cannot be assumed to qualify under that DTS clause. RSS-210 Annex B has a separate 902–928 MHz field-strength route. The Wio-SX1262 module datasheet identifies FCC ID Z4T-WIO-SX1262; its FCC grant lists 902.3–914.9 MHz and 0.092 W conducted output. That is US authorization, not Canadian ISED authorization. The P1-Pro product specification lists FCC/CE; no ISED identifier has yet been verified. Do not treat the 22 dBm hardware TX capability or this FCC grant as an approved Canadian operating power.
 - Confirm official Android/iOS clients can retain both identities from one physical device and validate Room discovery/login/post synchronization over the air.
 - Test power-loss recovery, full ExtraFS behavior, ACL persistence, and simultaneous Repeater/Room traffic.
 - Back up existing device firmware/data and verify a documented recovery route before hardware flashing.
 
-Latest targeted CI verification (2026-11-27): SenseCap_Solar_repeater build and native unit tests passed on commit 07aceda162d133803044e0962bf8af0b6e4844de. The full target matrix and all hardware/over-the-air validation remain outstanding. No firmware has been flashed.
+Latest CI verification (2026-11-27): all 15 supported firmware targets and native unit tests passed on commit 36f9b80f6d74b21eed5c65ca7323b347f4f250e0. Hardware storage/power/radio testing, official-client interoperability and Canadian ISED compliance verification remain outstanding. No firmware has been flashed.
