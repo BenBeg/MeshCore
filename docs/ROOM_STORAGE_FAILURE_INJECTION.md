@@ -1,6 +1,6 @@
 # Room Storage Failure-Injection Plan
 
-Status: the host harness exercises the same shared Room journal append/compaction transactions and atomic ACL inactive-slot write transaction used by firmware, through a deterministic fake filesystem. Journal tests cover operation failures and short writes at every header/record write boundary. ACL transaction tests cover inactive-slot removal/open, short header/record writes, flush, close and read-back failures while asserting that the active ACL slot is unchanged. ACL load/migration/clear, identity/ExtraFS transaction injection and physical power-loss tests remain outstanding. No hardware fault injection has been performed.
+Status: the host harness exercises the same shared Room journal append/compaction transactions, atomic ACL inactive-slot write transaction, and ACL clear ordering helper used by firmware, through a deterministic fake filesystem. Journal tests cover operation failures and short writes at every header/record write boundary. ACL write tests cover inactive-slot removal/open, short header/record writes, flush, close and read-back failures while asserting that the active ACL slot is unchanged. ACL clear tests verify that the empty-generation commit callback precedes RAM clearing and stale-file retirement, and that failed commit/cleanup paths preserve the appropriate files. ACL load/migration/slot selection, identity/ExtraFS transaction injection and physical power-loss tests remain outstanding. No hardware fault injection has been performed.
 
 ## Scope
 
@@ -49,7 +49,7 @@ A host-side fake filesystem is preferred for deterministic tests. Hardware power
 |---|---|---|
 | A01 | Interrupt inactive ACL slot write | Previous valid ACL slot remains active |
 | A02 | Corrupt newest ACL slot checksum | Fall back to previous valid slot |
-| A03 | Interrupt empty-generation ACL clear | Never resurrect revoked contacts from an older slot once the empty generation was committed |
+| A03 | Interrupt empty-generation ACL clear | Never resurrect revoked contacts from an older slot once the empty generation was committed. Native tests cover transaction ordering and cleanup failures; actual reboot/slot-selection recovery remains outstanding |
 | A04 | Fail ACL read-back | Do not report save success; retry according to service policy |
 | A05 | Fail inactive-slot remove/open, header/record write, flush, close or verification read during save | Keep active slot/generation unchanged; report save failure |
 | I01 | Existing identity file unreadable/corrupt | Preserve file; do not silently generate a replacement identity |
@@ -91,6 +91,6 @@ A test passes only when observed behavior matches the expected recovery and the 
 ## Current known limitations
 
 - The current production code has read-back verification for new appended records and for compacted journal base records.
-- The repository now shares journal append, compaction, slot verification and ACL inactive-slot write transaction code between firmware and host tests. The fake filesystem injects operation failures and short writes; ACL load/migration/clear and slot retirement, identity, ExtraFS and hardware power-loss fault matrices remain outstanding.
+- The repository now shares journal append, compaction, slot verification, ACL inactive-slot write and ACL clear ordering transaction code between firmware and host tests. The fake filesystem injects operation failures and short writes; ACL load/migration/slot selection, full reboot recovery, identity, ExtraFS and hardware power-loss fault matrices remain outstanding.
 - The CI green status verifies compilation and existing unit tests; it does not validate the failure matrix.
 - Power-loss atomicity, flash-controller behavior, and LittleFS behavior under real supply collapse remain unverified.
