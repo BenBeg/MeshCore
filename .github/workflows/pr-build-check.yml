@@ -17,6 +17,13 @@ on:
       - 'variants/**'
       - 'platformio.ini'
       - '.github/workflows/pr-build-check.yml'
+  workflow_dispatch:
+    inputs:
+      full_matrix:
+        description: 'Run the complete cross-platform build matrix'
+        required: true
+        type: boolean
+        default: true
 
 jobs:
   build:
@@ -24,30 +31,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        environment:
-          # ESP32-S3 (most common platform)
-          - Heltec_v3_companion_radio_ble
-          - Heltec_v3_repeater
-          - Heltec_v3_room_server
-          # nRF52
-          - RAK_4631_companion_radio_ble
-          - RAK_4631_companion_radio_ethernet
-          - RAK_4631_repeater
-          - RAK_4631_repeater_ethernet
-          - RAK_4631_room_server
-          - RAK_4631_room_server_ethernet
-          # SenseCAP Solar integrated Repeater + Room target (compile gate before hardware validation)
-          - SenseCap_Solar_repeater
-          # RP2040
-          - PicoW_repeater
-          # STM32
-          - wio-e5-mini_repeater
-          # ESP32-C6
-          - LilyGo_Tlora_C6_repeater_
-          # LR1110 (nRF52)
-          - wio_wm1110_repeater
-          # SX1276 (ESP32)
-          - Tbeam_SX1276_repeater
+        environment: ${{ (github.event_name == 'workflow_dispatch' && inputs.full_matrix) || github.event_name == 'push' && fromJSON('["Heltec_v3_companion_radio_ble","Heltec_v3_repeater","Heltec_v3_room_server","RAK_4631_companion_radio_ble","RAK_4631_companion_radio_ethernet","RAK_4631_repeater","RAK_4631_repeater_ethernet","RAK_4631_room_server","RAK_4631_room_server_ethernet","SenseCap_Solar_repeater","PicoW_repeater","wio-e5-mini_repeater","LilyGo_Tlora_C6_repeater_","wio_wm1110_repeater","Tbeam_SX1276_repeater"]') || fromJSON('["SenseCap_Solar_repeater"]') }}
 
     steps:
       - name: Clone Repo
