@@ -1576,6 +1576,7 @@ void MyMesh::onControlDataRecv(mesh::Packet* packet) {
         sendZeroHop(resp, getRetransmitDelay(resp)*4);  // apply random delay (widened x4), as multiple nodes can respond to this
       }
     }
+#if defined(ROOM_EXTRA_FS)
     if ((filter & (1 << ADV_TYPE_ROOM)) != 0 && _prefs.discovery_mod_timestamp >= since) {
       bool prefix_only = packet->payload[0] & 1;
       uint8_t data[6 + PUB_KEY_SIZE];
@@ -1586,6 +1587,7 @@ void MyMesh::onControlDataRecv(mesh::Packet* packet) {
       auto resp = createControlData(data, prefix_only ? 6 + 8 : 6 + PUB_KEY_SIZE);
       if (resp) sendRoomZeroHopPriority(resp, getRetransmitDelay(resp) * 4, ROOM_TX_PRIORITY);
     }
+#endif
   } else if (type == CTL_TYPE_NODE_DISCOVER_RESP && packet->payload_len >= 6) {
     uint8_t node_type = packet->payload[0] & 0x0F;
     if (node_type != ADV_TYPE_REPEATER) {
@@ -1728,9 +1730,11 @@ void MyMesh::begin(FILESYSTEM *fs, FILESYSTEM *room_fs) {
   // load persisted prefs
   _cli.loadPrefs(_fs);
   acl.load(_fs, self_id);
+#if defined(ROOM_EXTRA_FS)
   room_acl.setStoragePath("/room_contacts");
   room_acl.load(_room_fs, room_id);
   loadRoomPosts();
+#endif
   // TODO: key_store.begin();
   region_map.load(_fs);
 
@@ -1867,18 +1871,28 @@ void MyMesh::sendSelfAdvertisement(int delay_millis, bool flood) {
 void MyMesh::updateAdvertTimer() {
   if (_prefs.advert_interval > 0) {
     next_local_advert = futureMillis(((uint32_t)_prefs.advert_interval) * 2 * 60 * 1000);
+#if defined(ROOM_EXTRA_FS)
     room_next_local_advert = futureMillis(((uint32_t)_prefs.advert_interval) * 2 * 60 * 1000 + 30000);
+#else
+    room_next_local_advert = 0;
+#endif
   } else {
-    next_local_advert = room_next_local_advert = 0;
+    next_local_advert = 0;
+    room_next_local_advert = 0;
   }
 }
 
 void MyMesh::updateFloodAdvertTimer() {
   if (_prefs.flood_advert_interval > 0) {
     next_flood_advert = futureMillis(((uint32_t)_prefs.flood_advert_interval) * 60 * 60 * 1000);
+#if defined(ROOM_EXTRA_FS)
     room_next_flood_advert = futureMillis(((uint32_t)_prefs.flood_advert_interval) * 60 * 60 * 1000 + 60000);
+#else
+    room_next_flood_advert = 0;
+#endif
   } else {
-    next_flood_advert = room_next_flood_advert = 0;
+    next_flood_advert = 0;
+    room_next_flood_advert = 0;
   }
 }
 
@@ -2095,12 +2109,14 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply
       Serial.printf("\n");
     }
     reply[0] = 0;
+#if defined(ROOM_EXTRA_FS)
   } else if (strncmp(command, "room.post", 9) == 0) {
     char* msg = command + 9;
     while (*msg == ' ') msg++;
     if (!*msg) strcpy(reply, "ERR empty message");
     else if (roomStorePost(room_id, msg)) strcpy(reply, "OK");
     else strcpy(reply, "ERR room storage unavailable");
+#endif
   } else if (memcmp(command, "discover.neighbors", 18) == 0) {
     const char* sub = command + 18;
     while (*sub == ' ') sub++;
@@ -2137,6 +2153,7 @@ void MyMesh::loop() {
     updateAdvertTimer(); // schedule next local advert
   }
 
+#if defined(ROOM_EXTRA_FS)
   if (room_next_flood_advert && millisHasNowPassed(room_next_flood_advert)) {
     mesh::Packet* pkt = createRoomAdvert();
     if (pkt) sendRoomFloodScoped(default_scope, pkt, 0, _prefs.path_hash_mode + 1);
@@ -2150,6 +2167,7 @@ void MyMesh::loop() {
     room_next_local_advert = _prefs.advert_interval > 0
       ? futureMillis(((uint32_t)_prefs.advert_interval) * 2 * 60 * 1000 + 30000) : 0;
   }
+#endif
 
   if (set_radio_at && millisHasNowPassed(set_radio_at)) { // apply pending (temporary) radio params
     set_radio_at = 0;                                     // clear timer
