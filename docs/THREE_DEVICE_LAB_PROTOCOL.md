@@ -329,8 +329,8 @@ Before any flash:
 
 ## 12. Current readiness
 
-- Native unit tests: passed on PR head `2cc4dbbe5015c3f67d7c256294d3d3f813bdb040`.
-- Full firmware matrix: running at the time this protocol was added; verify the run before recording final CI status.
+- Native unit tests: passed on PR head `b84d188954dc0e79a9c2a73628be834e754d33dc`.
+- Full 16-target firmware matrix: passed on the same head, including the SenseCAP Repeater and ThinkNode M5 BLE companion target.
 - Physical test execution: not started.
 - Firmware flashed: no.
 - RF compliance gate: unresolved; no over-the-air transmission authorized by this protocol.

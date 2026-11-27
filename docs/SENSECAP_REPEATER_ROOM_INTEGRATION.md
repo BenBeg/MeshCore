@@ -1,6 +1,6 @@
 # SenseCAP Solar Repeater + Room Server Integration
 
-Status: implementation in progress. Native unit tests passed on PR head `2cc4dbbe5015c3f67d7c256294d3d3f813bdb040` after adding the missing GoogleTest entry point. The full 15-target matrix for that commit is still running; 14 jobs have completed successfully and one job was still in progress at the last check. Hardware validation remains outstanding.
+Status: implementation in progress. Native unit tests and the full 16-target firmware matrix passed on PR head `b84d188954dc0e79a9c2a73628be834e754d33dc`, including both `SenseCap_Solar_repeater` and `ThinkNode_M5_companion_radio_ble`. Hardware validation remains outstanding.
 
 **Bench protocol:** see [Three-Device Lab Protocol](./THREE_DEVICE_LAB_PROTOCOL.md) for the complete stock-versus-combined test plan using one SenseCAP P1-Pro and two vanilla MeshCore ThinkNode M5 clients, including RF compliance gate, setup, logs, expected behavior and pass/fail scorecard.
 
@@ -114,11 +114,11 @@ Storage source audit:
 
 ## Remaining implementation and verification
 
-- Repeat the full target matrix after any further firmware-code changes.
+- Repeat the full 16-target matrix after any further firmware-code changes. The matrix now includes the exact official ThinkNode M5 BLE companion target used as the two-client lab control.
 - Verify the exact P1-Pro radio certification and Canadian ISED operating conditions. The 910.525 MHz / 62.5 kHz preset is a MeshCore network interoperability setting, not proof of regulatory compliance. RSS-247 Issue 4 specifies a 500 kHz minimum 6 dB bandwidth for its 902–928 MHz DTS route; the MeshCore preset is 62.5 kHz, so it cannot be assumed to qualify under that DTS clause. RSS-210 Annex B has a separate 902–928 MHz field-strength route. The Wio-SX1262 module datasheet identifies FCC ID Z4T-WIO-SX1262; its FCC grant lists 902.3–914.9 MHz and 0.092 W conducted output. That is US authorization, not Canadian ISED authorization. The P1-Pro product specification lists FCC/CE; no ISED identifier has yet been verified. Do not treat the 22 dBm hardware TX capability or this FCC grant as an approved Canadian operating power.
 - Confirm official Android/iOS clients can retain both identities from one physical device and validate Room discovery/login/post synchronization over the air.
 - Test SafeRoomExtraFS first-use formatting and nonblank mount-failure preservation, power-loss recovery, full ExtraFS behavior, ACL persistence, and simultaneous Repeater/Room traffic.
 - Back up existing device firmware/data and verify a documented recovery route before hardware flashing.
 - Exercise identity-file corruption/recovery, atomic ACL clear interruption points, and journal generation rollover in controlled automated or sacrificial-device tests before deployment.
 
-Latest verified CI (2026-11-27): native unit tests and all 15 firmware targets passed on PR head `2cc4dbbe5015c3f67d7c256294d3d3f813bdb040`. Subsequent storage hardening (SafeRoomExtraFS, identity-file preservation, atomic ACL clear and wrap-safe journal generation selection) is on the newer branch head and requires fresh CI. Hardware storage/power/radio testing, official-client interoperability and Canadian ISED compliance verification remain outstanding. No firmware has been flashed.
+Latest verified CI (2026-11-27): native unit tests and all 16 firmware targets passed on PR head `b84d188954dc0e79a9c2a73628be834e754d33dc`. This includes the storage hardening (SafeRoomExtraFS, identity-file preservation, atomic ACL clear and wrap-safe journal generation selection) and the ThinkNode M5 BLE companion client target. Hardware storage/power/radio testing, official-client interoperability and Canadian ISED compliance verification remain outstanding. No firmware has been flashed.
