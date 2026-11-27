@@ -1343,7 +1343,7 @@ void MyMesh::onAckRecv(mesh::Packet* packet, uint32_t ack_crc) {
 
 void MyMesh::roomLoop() {
   if (!room_service_enabled) return;
-  if (room_dirty_contacts_expiry && millisHasNowPassed(room_dirty_contacts_expiry))
+  if (room_dirty_contacts_expiry && millisHasNowPassed(room_dirty_contacts_expiry)) {
     room_acl.save(_room_fs);
     room_dirty_contacts_expiry = 0;
   }
