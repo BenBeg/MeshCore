@@ -108,6 +108,8 @@ void setup() {
 
   Serial.print("Repeater ID: ");
   mesh::Utils::printHex(Serial, the_mesh.self_id.pub_key, PUB_KEY_SIZE); Serial.println();
+  Serial.print("Room ID: ");
+  mesh::Utils::printHex(Serial, the_mesh.getRoomIdentity().pub_key, PUB_KEY_SIZE); Serial.println();
 
   command[0] = 0;
 #ifdef ETHERNET_ENABLED
