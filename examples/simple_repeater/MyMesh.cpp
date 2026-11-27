@@ -1052,6 +1052,7 @@ bool MyMesh::processRoomAck(const uint8_t* data) {
       client->extra.room.pending_ack = 0;
       client->extra.room.push_failures = 0;
       client->extra.room.sync_since = client->extra.room.push_post_timestamp;
+      room_next_push = futureMillis(100);
       return true;
     }
   }
@@ -1316,15 +1317,21 @@ void MyMesh::roomLoop() {
     room_acl.save(_room_fs);
     room_dirty_contacts_expiry = 0;
   }
-  if (!room_next_push || !millisHasNowPassed(room_next_push) || room_acl.getNumClients() == 0) return;
-  for (int i = 0; i < room_acl.getNumClients(); i++) {
+  if (!room_next_push || !millisHasNowPassed(room_next_push)) return;
+  int count = room_acl.getNumClients();
+  if (count == 0) {
+    room_next_push = 0;
+    return;
+  }
+
+  for (int i = 0; i < count; i++) {
     ClientInfo* c = room_acl.getClientByIdx(i);
     if (c->extra.room.pending_ack && millisHasNowPassed(c->extra.room.ack_timeout)) {
       c->extra.room.push_failures++;
       c->extra.room.pending_ack = 0;
     }
   }
-  int count = room_acl.getNumClients();
+
   if (room_next_client_idx >= count) room_next_client_idx = 0;
   ClientInfo* client = room_acl.getClientByIdx(room_next_client_idx);
   bool did_push = false;
@@ -1343,7 +1350,18 @@ void MyMesh::roomLoop() {
     }
   }
   room_next_client_idx = (room_next_client_idx + 1) % count;
-  room_next_push = futureMillis(did_push ? 1200 : 150);
+
+  // Keep the Repeater's solar power-saving mode available. Continue polling only
+  // while another client has unsent posts; a pending ACK can wake the radio itself.
+  bool ready_work = false;
+  for (int i = 0; i < count && !ready_work; i++) {
+    ClientInfo* c = room_acl.getClientByIdx(i);
+    if (!c->extra.room.pending_ack && c->last_activity != 0 &&
+        c->extra.room.push_failures < 3 && roomGetUnsyncedCount(c) > 0) {
+      ready_work = true;
+    }
+  }
+  room_next_push = ready_work ? futureMillis(did_push ? 1200 : 150) : 0;
 }
 
 static bool isShare(const mesh::Packet *packet) {
@@ -2087,5 +2105,5 @@ bool MyMesh::hasPendingWork() const {
 #if defined(WITH_BRIDGE)
   if (bridge.isRunning()) return true;  // bridge needs WiFi radio, can't sleep
 #endif
-  return _mgr->getOutboundTotal() > 0;
+  return _mgr->getOutboundTotal() > 0 || room_next_push != 0 || room_dirty_contacts_expiry != 0;
 }
