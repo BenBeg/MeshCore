@@ -28,7 +28,7 @@ This protocol distinguishes source/build checks from actual over-the-air evidenc
 | D2 | ThinkNode M5 #1 | MeshCore client A; originates test messages and Room posts |
 | D3 | ThinkNode M5 #2 | MeshCore client B; receives/forwards test messages and reads Room posts |
 
-D2 and D3 must run the official, unmodified MeshCore ThinkNode M5 BLE companion-radio firmware for the entire comparison. The repository contains the exact target `ThinkNode_M5_companion_radio_ble` in `variants/thinknode_m5/platformio.ini` (also present at the PR base commit). Build it from the upstream/base source with `pio run -e ThinkNode_M5_companion_radio_ble`, verify the M5 hardware revision first, and flash both M5s with this same official target. The current factory Meshtastic 2.7+ firmware is not a valid MeshCore interoperability control. Record firmware version, build date, device identity prefix and radio settings for each.
+D2 and D3 must run the official, unmodified MeshCore ThinkNode M5 BLE companion-radio firmware for the entire comparison. The repository contains the exact target `ThinkNode_M5_companion_radio_ble` in `variants/thinknode_m5/platformio.ini` (also present at the PR base commit). Build it from the upstream/base source with `pio run -e ThinkNode_M5_companion_radio_ble`, verify the M5 hardware revision first, and flash both M5s with this same official target. The current factory Meshtastic 2.7+ firmware is not a valid MeshCore interoperability control. Record firmware version, build date, device identity prefix and radio settings for each. The current M5 BLE target sets `BLE_PIN_CODE=123456`; confirm the pairing prompt against the exact binary and do not treat this development default as a secure long-term credential.
 
 Use the same D2/D3 firmware, region, frequency, bandwidth, spreading factor, coding rate, transmit-power setting and antenna arrangement in both phases. Do not change client settings between baseline and combined-firmware runs.
 
@@ -193,9 +193,10 @@ Expected:
 
 1. Record Repeater and Room identity prefixes before and after reboot.
 2. Add one test contact through the Room workflow if supported by the official app.
-3. Verify the Room contact/ACL state survives reboot.
-4. Verify the Repeater's pre-existing contacts/configuration remain intact.
-5. Confirm Room identity/ACL actions do not replace or mutate the Repeater identity or Repeater contact list.
+3. Wait at least 6 seconds after Room login or ACL changes so the 5-second debounced ACL save can complete; capture any save warning in the serial log.
+4. Verify the Room contact/ACL state survives reboot.
+5. Verify the Repeater's pre-existing contacts/configuration remain intact.
+6. Confirm Room identity/ACL actions do not replace or mutate the Repeater identity or Repeater contact list.
 
 Expected:
 - `_main.id` remains the Repeater identity; `_room.id` is independent.
