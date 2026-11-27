@@ -94,6 +94,18 @@ void setup() {
     store.save("_main", the_mesh.self_id);
   }
 
+  mesh::LocalIdentity room_id;
+  if (!store.load("_room", room_id)) {
+    room_id = radio_new_identity();
+    int count = 0;
+    while (count < 10 && (room_id.pub_key[0] == 0x00 || room_id.pub_key[0] == 0xFF)) {
+      room_id = radio_new_identity();
+      count++;
+    }
+    store.save("_room", room_id);
+  }
+  the_mesh.setRoomIdentity(room_id);
+
   Serial.print("Repeater ID: ");
   mesh::Utils::printHex(Serial, the_mesh.self_id.pub_key, PUB_KEY_SIZE); Serial.println();
 
