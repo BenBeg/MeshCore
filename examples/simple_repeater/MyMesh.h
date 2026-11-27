@@ -98,6 +98,7 @@ struct RoomPostInfo {
 class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   FILESYSTEM* _fs;
   FILESYSTEM* _room_fs;
+  bool room_service_enabled;
   uint32_t last_millis;
   uint64_t uptime_millis;
   unsigned long next_local_advert, next_flood_advert;
@@ -219,20 +220,21 @@ protected:
   void getPeerSharedSecretForIdentity(const mesh::LocalIdentity& local_id, uint8_t* dest_secret, int peer_idx) override;
   int getLocalIdentityCount() const override {
 #if defined(ROOM_EXTRA_FS)
-    return 2;
+    return room_service_enabled ? 2 : 1;
 #else
     return 1;
 #endif
   }
   mesh::LocalIdentity* getLocalIdentity(int idx) override {
 #if defined(ROOM_EXTRA_FS)
-    return idx == 0 ? &self_id : (idx == 1 ? &room_id : NULL);
+    return idx == 0 ? &self_id : (idx == 1 && room_service_enabled ? &room_id : NULL);
 #else
     return idx == 0 ? &self_id : NULL;
 #endif
   }
   void setRoomIdentity(const mesh::LocalIdentity& id) { room_id = id; }
   mesh::LocalIdentity& getRoomIdentity() { return room_id; }
+  bool isRoomServiceEnabled() const { return room_service_enabled; }
   void onAdvertRecv(mesh::Packet* packet, const mesh::Identity& id, uint32_t timestamp, const uint8_t* app_data, size_t app_data_len);
   void onPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender_idx, const uint8_t* secret, uint8_t* data, size_t len) override;
   bool onPeerPathRecv(mesh::Packet* packet, int sender_idx, const uint8_t* secret, uint8_t* path, uint8_t path_len, uint8_t extra_type, uint8_t* extra, uint8_t extra_len) override;
