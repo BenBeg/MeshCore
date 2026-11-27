@@ -87,6 +87,7 @@ struct NeighbourInfo {
 
 struct RoomPostInfo {
   mesh::Identity author;
+  uint32_t sequence;
   uint32_t post_timestamp;
   char text[ROOM_MAX_POST_TEXT_LEN + 1];
 };
