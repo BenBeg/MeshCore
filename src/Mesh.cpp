@@ -144,25 +144,30 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
         //       For flood mode, the path may not be the 'best' in terms of hops.
         // FUTURE: could send back multiple paths, using createPathReturn(), and let sender choose which to use(?)
 
-        if (self_id.isHashMatch(&dest_hash)) {
-          // scan contacts DB, for all matching hashes of 'src_hash' (max 4 matches supported ATM)
-          int num = searchPeersByHash(&src_hash);
-          // for each matching contact, try to decrypt data
-          bool found = false;
+        bool found = false;
+        // Try every local identity whose destination hash matches. With truncated
+        // hashes, authentication (MAC) decides which service owns the packet.
+        for (int identity_idx = 0; identity_idx < getLocalIdentityCount() && !found; identity_idx++) {
+          LocalIdentity* local_id = getLocalIdentity(identity_idx);
+          if (local_id == NULL || !local_id->isHashMatch(&dest_hash)) continue;
+
+          // scan this identity's contacts DB for matching source hashes
+          int num = searchPeersByHashForIdentity(*local_id, &src_hash);
           for (int j = 0; j < num; j++) {
             uint8_t secret[PUB_KEY_SIZE];
-            getPeerSharedSecret(secret, j);
+            getPeerSharedSecretForIdentity(*local_id, secret, j);
 
             // decrypt, checking MAC is valid
             uint8_t data[MAX_PACKET_PAYLOAD];
             int len = Utils::MACThenDecrypt(secret, data, macAndData, pkt->payload_len - i);
-            if (len > 0) {  // success!
+            if (len > 0) {  // successful authentication selects this service
               if (pkt->getPayloadType() == PAYLOAD_TYPE_PATH) {
                 int k = 0;
                 uint8_t path_len = data[k++];
                 if (!Packet::isValidPathLen(path_len)) {
                   MESH_DEBUG_PRINTLN("%s PAYLOAD_TYPE_PATH, bad path_len: %u", getLogDateTime(), (uint32_t)path_len);
-                  break;   // reject bad encoding
+                  found = true; // authenticated but malformed; do not try another identity
+                  break;
                 }
                 uint8_t hash_size = (path_len >> 6) + 1;
                 uint8_t hash_count = path_len & 63;
@@ -170,25 +175,25 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
                 uint8_t extra_type = data[k++] & 0x0F;   // upper 4 bits reserved for future use
                 uint8_t* extra = &data[k];
                 uint8_t extra_len = len - k;   // remainder of packet (may be padded with zeroes!)
-                if (onPeerPathRecv(pkt, j, secret, path, path_len, extra_type, extra, extra_len)) {
+                if (onPeerPathRecvForIdentity(pkt, *local_id, j, secret, path, path_len, extra_type, extra, extra_len)) {
                   if (pkt->isRouteFlood()) {
-                    // send a reciprocal return path to sender, but send DIRECTLY!
-                    mesh::Packet* rpath = createPathReturn(&src_hash, secret, pkt->path, pkt->path_len, 0, NULL, 0);
+                    // Reciprocal path responses use the same service identity.
+                    mesh::Packet* rpath = createPathReturn(*local_id, &src_hash, secret, pkt->path, pkt->path_len, 0, NULL, 0);
                     if (rpath) sendDirect(rpath, path, path_len, 500);
                   }
                 }
               } else {
-                onPeerDataRecv(pkt, pkt->getPayloadType(), j, secret, data, len);
+                onPeerDataRecvForIdentity(pkt, *local_id, pkt->getPayloadType(), j, secret, data, len);
               }
               found = true;
               break;
             }
           }
-          if (found) {
-            pkt->markDoNotRetransmit();  // packet was for this node, so don't retransmit
-          } else {
-            MESH_DEBUG_PRINTLN("%s recv matches no peers, src_hash=%02X", getLogDateTime(), (uint32_t)src_hash);
-          }
+        }
+        if (found) {
+          pkt->markDoNotRetransmit();  // packet was for this node, so don't retransmit
+        } else {
+          MESH_DEBUG_PRINTLN("%s recv matches no peers, src_hash=%02X", getLogDateTime(), (uint32_t)src_hash);
         }
         action = routeRecvPacket(pkt);
       }
@@ -204,18 +209,22 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
         MESH_DEBUG_PRINTLN("%s Mesh::onRecvPacket(): incomplete data packet", getLogDateTime());
       } else if (!_tables->wasSeen(pkt)) {
         _tables->markSeen(pkt);
-        if (self_id.isHashMatch(&dest_hash)) {
-          Identity sender(sender_pub_key);
+        Identity sender(sender_pub_key);
+        // As above, a truncated destination-hash collision is resolved by
+        // trying each matching identity and accepting only a valid MAC.
+        for (int identity_idx = 0; identity_idx < getLocalIdentityCount(); identity_idx++) {
+          LocalIdentity* local_id = getLocalIdentity(identity_idx);
+          if (local_id == NULL || !local_id->isHashMatch(&dest_hash)) continue;
 
           uint8_t secret[PUB_KEY_SIZE];
-          self_id.calcSharedSecret(secret, sender);
+          local_id->calcSharedSecret(secret, sender);
 
-          // decrypt, checking MAC is valid
           uint8_t data[MAX_PACKET_PAYLOAD];
           int len = Utils::MACThenDecrypt(secret, data, macAndData, pkt->payload_len - i);
-          if (len > 0) {  // success!
-            onAnonDataRecv(pkt, secret, sender, data, len);
+          if (len > 0) {
+            onAnonDataRecvForIdentity(pkt, *local_id, secret, sender, data, len);
             pkt->markDoNotRetransmit();
+            break;
           }
         }
         action = routeRecvPacket(pkt);
@@ -260,9 +269,18 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
 
       if (i > pkt->payload_len) {
         MESH_DEBUG_PRINTLN("%s Mesh::onRecvPacket(): incomplete advertisement packet", getLogDateTime());
-      } else if (self_id.matches(id.pub_key)) {
-        MESH_DEBUG_PRINTLN("%s Mesh::onRecvPacket(): receiving SELF advert packet", getLogDateTime());
-      } else if (!_tables->wasSeen(pkt)) {
+      } else {
+        bool is_self_advert = false;
+        for (int identity_idx = 0; identity_idx < getLocalIdentityCount(); identity_idx++) {
+          LocalIdentity* local_id = getLocalIdentity(identity_idx);
+          if (local_id && local_id->matches(id.pub_key)) {
+            is_self_advert = true;
+            break;
+          }
+        }
+        if (is_self_advert) {
+          MESH_DEBUG_PRINTLN("%s Mesh::onRecvPacket(): receiving SELF advert packet", getLogDateTime());
+        } else if (!_tables->wasSeen(pkt)) {
         _tables->markSeen(pkt);
         uint8_t* app_data = &pkt->payload[i];
         int app_data_len = pkt->payload_len - i;
@@ -285,6 +303,7 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
           action = routeRecvPacket(pkt);
         } else {
           MESH_DEBUG_PRINTLN("%s Mesh::onRecvPacket(): received advertisement with forged signature! (app_data_len=%d)", getLogDateTime(), app_data_len);
+        }
         }
       }
       break;
