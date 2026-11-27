@@ -698,6 +698,371 @@ bool MyMesh::onPeerPathRecvForIdentity(mesh::Packet* packet, const mesh::LocalId
   return onPeerPathRecv(packet, sender_idx, secret, path, path_len, extra_type, extra, extra_len);
 }
 
+
+struct RoomServerStats {
+  uint16_t batt_milli_volts;
+  uint16_t curr_tx_queue_len;
+  int16_t noise_floor;
+  int16_t last_rssi;
+  uint32_t n_packets_recv, n_packets_sent, total_air_time_secs, total_up_time_secs;
+  uint32_t n_sent_flood, n_sent_direct, n_recv_flood, n_recv_direct;
+  uint16_t err_events;
+  int16_t last_snr;
+  uint16_t n_direct_dups, n_flood_dups;
+  uint16_t n_posted, n_post_push;
+};
+
+void MyMesh::roomAddPost(ClientInfo* client, const char* text) {
+  roomStorePost(client->id, text);
+}
+
+void MyMesh::roomStorePost(const mesh::Identity& author, const char* text) {
+  if (!text || !text[0]) return;
+  RoomPostInfo& post = room_posts[room_next_post_idx];
+  post.author = author;
+  StrHelper::strncpy(post.text, text, ROOM_MAX_POST_TEXT_LEN);
+  post.post_timestamp = getRTCClock()->getCurrentTimeUnique();
+  room_next_post_idx = (room_next_post_idx + 1) % ROOM_MAX_UNSYNCED_POSTS;
+  room_next_push = futureMillis(2000);
+  room_num_posted++;
+}
+
+void MyMesh::roomPushPost(ClientInfo* client, RoomPostInfo& post) {
+  int len = 0;
+  memcpy(&reply_data[len], &post.post_timestamp, 4); len += 4;
+  uint8_t attempt;
+  getRNG()->random(&attempt, 1);
+  reply_data[len++] = (TXT_TYPE_SIGNED_PLAIN << 2) | (attempt & 3);
+  memcpy(&reply_data[len], post.author.pub_key, 4); len += 4;
+  int text_len = strlen(post.text);
+  memcpy(&reply_data[len], post.text, text_len); len += text_len;
+  mesh::Utils::sha256((uint8_t *)&client->extra.room.pending_ack, 4, reply_data, len,
+                      client->id.pub_key, PUB_KEY_SIZE);
+  client->extra.room.push_post_timestamp = post.post_timestamp;
+  auto reply = createDatagram(room_id, PAYLOAD_TYPE_TXT_MSG, client->id,
+                              client->shared_secret, reply_data, len);
+  if (!reply) {
+    client->extra.room.pending_ack = 0;
+    return;
+  }
+  if (client->out_path_len == OUT_PATH_UNKNOWN) {
+    sendFloodScoped(default_scope, reply, 0, _prefs.path_hash_mode + 1);
+    client->extra.room.ack_timeout = futureMillis(12000);
+  } else {
+    sendDirect(reply, client->out_path, client->out_path_len);
+    uint8_t count = client->out_path_len & 63;
+    client->extra.room.ack_timeout = futureMillis(4000 + 2000 * (count + 1));
+  }
+  room_num_post_pushes++;
+}
+
+uint8_t MyMesh::roomGetUnsyncedCount(ClientInfo* client) {
+  uint8_t count = 0;
+  for (int i = 0; i < ROOM_MAX_UNSYNCED_POSTS; i++) {
+    if (room_posts[i].post_timestamp > client->extra.room.sync_since &&
+        !room_posts[i].author.matches(client->id)) count++;
+  }
+  return count;
+}
+
+bool MyMesh::processRoomAck(const uint8_t* data) {
+  for (int i = 0; i < room_acl.getNumClients(); i++) {
+    ClientInfo* client = room_acl.getClientByIdx(i);
+    if (client->extra.room.pending_ack &&
+        memcmp(data, &client->extra.room.pending_ack, 4) == 0) {
+      client->extra.room.pending_ack = 0;
+      client->extra.room.push_failures = 0;
+      client->extra.room.sync_since = client->extra.room.push_post_timestamp;
+      return true;
+    }
+  }
+  return false;
+}
+
+void MyMesh::onRoomAnonDataRecv(mesh::Packet* packet, const uint8_t* secret,
+                                const mesh::Identity& sender, uint8_t* data, size_t len) {
+  if (packet->getPayloadType() != PAYLOAD_TYPE_ANON_REQ || len < 8) return;
+  uint32_t timestamp, sync_since;
+  memcpy(&timestamp, data, 4);
+  memcpy(&sync_since, data + 4, 4);
+  data[len] = 0;
+
+  ClientInfo* client = NULL;
+  if (data[8] == 0) client = room_acl.getClient(sender.pub_key, PUB_KEY_SIZE);
+  if (client == NULL) {
+    uint8_t perm;
+    if (strcmp((char *)&data[8], _prefs.password) == 0) perm = PERM_ACL_ADMIN;
+    else if (strcmp((char *)&data[8], _prefs.guest_password) == 0) perm = PERM_ACL_READ_WRITE;
+    else if (_prefs.allow_read_only) perm = PERM_ACL_GUEST;
+    else return;
+
+    client = room_acl.putClient(sender, 0);
+    if (timestamp <= client->last_timestamp) return;
+    client->last_timestamp = timestamp;
+    client->extra.room.sync_since = sync_since;
+    client->extra.room.pending_ack = 0;
+    client->extra.room.push_failures = 0;
+    client->last_activity = getRTCClock()->getCurrentTime();
+    client->permissions = (client->permissions & ~0x03) | perm;
+    memcpy(client->shared_secret, secret, PUB_KEY_SIZE);
+    room_dirty_contacts_expiry = futureMillis(5000);
+  }
+  if (packet->isRouteFlood()) client->out_path_len = OUT_PATH_UNKNOWN;
+
+  uint32_t now = getRTCClock()->getCurrentTimeUnique();
+  memcpy(reply_data, &now, 4);
+  reply_data[4] = 0;
+  reply_data[5] = 0;
+  reply_data[6] = (client->isAdmin() ? 1 : (client->permissions == 0 ? 2 : 0));
+  reply_data[7] = client->permissions;
+  getRNG()->random(&reply_data[8], 4);
+  reply_data[12] = 1;
+  room_next_push = futureMillis(2000);
+
+  if (packet->isRouteFlood()) {
+    mesh::Packet* path = createPathReturn(room_id, sender, client->shared_secret,
+        packet->path, packet->path_len, PAYLOAD_TYPE_RESPONSE, reply_data, 13);
+    if (path) sendFloodReply(path, ROOM_SERVER_RESPONSE_DELAY, packet->getPathHashSize());
+  } else {
+    mesh::Packet* reply = createDatagram(room_id, PAYLOAD_TYPE_RESPONSE, sender,
+        client->shared_secret, reply_data, 13);
+    if (reply) {
+      if (client->out_path_len != OUT_PATH_UNKNOWN)
+        sendDirect(reply, client->out_path, client->out_path_len, ROOM_SERVER_RESPONSE_DELAY);
+      else sendFloodReply(reply, ROOM_SERVER_RESPONSE_DELAY, packet->getPathHashSize());
+    }
+  }
+}
+
+int MyMesh::handleRoomRequest(ClientInfo* sender, uint32_t timestamp,
+                              uint8_t* payload, size_t payload_len) {
+  memcpy(reply_data, &timestamp, 4);
+  if (payload_len < 1) return 0;
+  if (payload[0] == 0x01) {
+    RoomServerStats stats = {};
+    stats.batt_milli_volts = board.getBattMilliVolts();
+    stats.curr_tx_queue_len = _mgr->getOutboundTotal();
+    stats.noise_floor = (int16_t)_radio->getNoiseFloor();
+    stats.last_rssi = (int16_t)radio_driver.getLastRSSI();
+    stats.n_packets_recv = radio_driver.getPacketsRecv();
+    stats.n_packets_sent = radio_driver.getPacketsSent();
+    stats.total_air_time_secs = getTotalAirTime() / 1000;
+    stats.total_up_time_secs = uptime_millis / 1000;
+    stats.n_sent_flood = getNumSentFlood(); stats.n_sent_direct = getNumSentDirect();
+    stats.n_recv_flood = getNumRecvFlood(); stats.n_recv_direct = getNumRecvDirect();
+    stats.err_events = _err_flags;
+    stats.last_snr = (int16_t)(radio_driver.getLastSNR() * 4);
+    stats.n_direct_dups = ((SimpleMeshTables*)getTables())->getNumDirectDups();
+    stats.n_flood_dups = ((SimpleMeshTables*)getTables())->getNumFloodDups();
+    stats.n_posted = room_num_posted; stats.n_post_push = room_num_post_pushes;
+    memcpy(&reply_data[4], &stats, sizeof(stats));
+    return 4 + sizeof(stats);
+  }
+  if (payload[0] == 0x03) {
+    uint8_t mask = payload_len > 1 ? (uint8_t)~payload[1] : 0xFF;
+    telemetry.reset();
+    telemetry.addVoltage(TELEM_CHANNEL_SELF, (float)board.getBattMilliVolts() / 1000.0f);
+    if ((sender->permissions & PERM_ACL_ROLE_MASK) == PERM_ACL_GUEST) mask = 0;
+    sensors.querySensors(mask, telemetry);
+    float temperature = board.getMCUTemperature();
+    if (!isnan(temperature)) telemetry.addTemperature(TELEM_CHANNEL_SELF, temperature);
+    uint8_t n = telemetry.getSize();
+    memcpy(&reply_data[4], telemetry.getBuffer(), n);
+    return 4 + n;
+  }
+  if (payload[0] == 0x05 && sender->isAdmin() && payload_len >= 3 &&
+      payload[1] == 0 && payload[2] == 0) {
+    uint8_t ofs = 4;
+    for (int i = 0; i < room_acl.getNumClients() && ofs + 7 <= sizeof(reply_data) - 4; i++) {
+      ClientInfo* c = room_acl.getClientByIdx(i);
+      if (!c->isAdmin()) continue;
+      memcpy(&reply_data[ofs], c->id.pub_key, 6); ofs += 6;
+      reply_data[ofs++] = c->permissions;
+    }
+    return ofs;
+  }
+  return 0;
+}
+
+void MyMesh::handleRoomCommand(uint32_t timestamp, char* command, char* reply) {
+  while (*command == ' ') command++;
+  if (strncmp(command, "room.post", 9) == 0) {
+    char* msg = command + 9;
+    while (*msg == ' ') msg++;
+    if (!*msg) strcpy(reply, "ERR empty message");
+    else { roomStorePost(room_id, msg); strcpy(reply, "OK"); }
+    return;
+  }
+  if (strncmp(command, "setperm ", 8) == 0) {
+    char* hex = command + 8;
+    char* sp = strchr(hex, ' ');
+    if (!sp) { strcpy(reply, "Err - bad params"); return; }
+    *sp++ = 0;
+    uint8_t pubkey[PUB_KEY_SIZE];
+    int n = min((int)strlen(hex), PUB_KEY_SIZE * 2);
+    if (!mesh::Utils::fromHex(pubkey, n / 2, hex)) { strcpy(reply, "Err - bad pubkey"); return; }
+    if (room_acl.applyPermissions(room_id, pubkey, n / 2, atoi(sp))) {
+      room_dirty_contacts_expiry = futureMillis(5000);
+      strcpy(reply, "OK");
+    } else strcpy(reply, "Err - invalid params");
+    return;
+  }
+  strcpy(reply, "ERR unsupported Room command");
+}
+
+void MyMesh::onRoomPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender_idx,
+                                const uint8_t* secret, uint8_t* data, size_t len) {
+  int i = room_matching_peer_indexes[sender_idx];
+  if (i < 0 || i >= room_acl.getNumClients()) return;
+  ClientInfo* client = room_acl.getClientByIdx(i);
+  if (type == PAYLOAD_TYPE_TXT_MSG && len > 5) {
+    uint32_t timestamp; memcpy(&timestamp, data, 4);
+    uint8_t flags = data[4] >> 2;
+    if (flags != TXT_TYPE_PLAIN && flags != TXT_TYPE_CLI_DATA && flags != TXT_TYPE_CLI_COMMAND) return;
+    if (timestamp < client->last_timestamp) return;
+    bool retry = timestamp == client->last_timestamp;
+    client->last_timestamp = timestamp;
+    uint32_t now = getRTCClock()->getCurrentTimeUnique();
+    client->last_activity = now;
+    client->extra.room.push_failures = 0;
+    data[len] = 0;
+    uint32_t ack_hash;
+    mesh::Utils::sha256((uint8_t*)&ack_hash, 4, data, 5 + strlen((char*)&data[5]),
+                        client->id.pub_key, PUB_KEY_SIZE);
+    uint8_t temp[166] = {};
+    bool send_ack = false;
+    if (flags == TXT_TYPE_CLI_DATA || flags == TXT_TYPE_CLI_COMMAND) {
+      if (client->isAdmin()) {
+        if (!retry) {
+          handleRoomCommand(timestamp, (char*)&data[5], (char*)&temp[5]);
+          temp[4] = (TXT_TYPE_CLI_DATA << 2);
+        }
+      }
+    } else if ((client->permissions & PERM_ACL_ROLE_MASK) != PERM_ACL_GUEST) {
+      if (!retry) roomAddPost(client, (const char*)&data[5]);
+      send_ack = true;
+    }
+    uint32_t delay = 0;
+    if (send_ack) {
+      if (client->out_path_len == OUT_PATH_UNKNOWN) {
+        mesh::Packet* ack = createAck(ack_hash);
+        if (ack) sendFloodReply(ack, ROOM_TXT_ACK_DELAY, packet->getPathHashSize());
+        delay = ROOM_TXT_ACK_DELAY + 1500;
+      } else {
+        uint32_t d = ROOM_TXT_ACK_DELAY;
+        if (getExtraAckTransmitCount() > 0) {
+          mesh::Packet* a1 = createMultiAck(ack_hash, 1);
+          if (a1) sendDirect(a1, client->out_path, client->out_path_len, d);
+          d += 300;
+        }
+        mesh::Packet* a2 = createAck(ack_hash);
+        if (a2) sendDirect(a2, client->out_path, client->out_path_len, d);
+        delay = d + 1500;
+      }
+    }
+    int text_len = strlen((char*)&temp[5]);
+    if (text_len > 0) {
+      if (now == timestamp) now++;
+      memcpy(temp, &now, 4);
+      auto reply = createDatagram(room_id, PAYLOAD_TYPE_TXT_MSG, client->id, secret, temp, 5 + text_len);
+      if (reply) {
+        if (client->out_path_len == OUT_PATH_UNKNOWN)
+          sendFloodReply(reply, delay + ROOM_SERVER_RESPONSE_DELAY, packet->getPathHashSize());
+        else sendDirect(reply, client->out_path, client->out_path_len, delay + ROOM_SERVER_RESPONSE_DELAY);
+      }
+    }
+  } else if (type == PAYLOAD_TYPE_REQ && len >= 5) {
+    uint32_t timestamp; memcpy(&timestamp, data, 4);
+    if (timestamp < client->last_timestamp) return;
+    client->last_timestamp = timestamp;
+    client->last_activity = getRTCClock()->getCurrentTime();
+    client->extra.room.push_failures = 0;
+    if (data[4] == 0x02 && packet->isRouteDirect()) {
+      uint32_t since = 0;
+      if (len >= 9) memcpy(&since, &data[5], 4);
+      else memcpy(&data[5], &since, 4);
+      if (since) client->extra.room.sync_since = since;
+      client->extra.room.pending_ack = 0;
+      if (client->out_path_len != OUT_PATH_UNKNOWN) {
+        uint32_t ack_hash;
+        mesh::Utils::sha256((uint8_t*)&ack_hash, 4, data, 9, client->id.pub_key, PUB_KEY_SIZE);
+        auto ack = createAck(ack_hash);
+        if (ack) {
+          ack->payload[ack->payload_len++] = roomGetUnsyncedCount(client);
+          sendDirect(ack, client->out_path, client->out_path_len, ROOM_SERVER_RESPONSE_DELAY);
+        }
+      }
+    } else {
+      int n = handleRoomRequest(client, timestamp, &data[4], len - 4);
+      if (n > 0) {
+        if (packet->isRouteFlood()) {
+          auto path = createPathReturn(room_id, client->id, secret, packet->path, packet->path_len,
+                                       PAYLOAD_TYPE_RESPONSE, reply_data, n);
+          if (path) sendFloodReply(path, ROOM_SERVER_RESPONSE_DELAY, packet->getPathHashSize());
+        } else {
+          auto reply = createDatagram(room_id, PAYLOAD_TYPE_RESPONSE, client->id, secret, reply_data, n);
+          if (reply) {
+            if (client->out_path_len != OUT_PATH_UNKNOWN)
+              sendDirect(reply, client->out_path, client->out_path_len, ROOM_SERVER_RESPONSE_DELAY);
+            else sendFloodReply(reply, ROOM_SERVER_RESPONSE_DELAY, packet->getPathHashSize());
+          }
+        }
+      }
+    }
+  }
+}
+
+bool MyMesh::onRoomPeerPathRecv(mesh::Packet* packet, int sender_idx, const uint8_t*,
+                                uint8_t* path, uint8_t path_len, uint8_t extra_type,
+                                uint8_t* extra, uint8_t extra_len) {
+  int i = room_matching_peer_indexes[sender_idx];
+  if (i < 0 || i >= room_acl.getNumClients()) return false;
+  ClientInfo* client = room_acl.getClientByIdx(i);
+  client->out_path_len = mesh::Packet::copyPath(client->out_path, path, path_len);
+  client->last_activity = getRTCClock()->getCurrentTime();
+  if (extra_type == PAYLOAD_TYPE_ACK && extra_len >= 4) processRoomAck(extra);
+  return false;
+}
+
+void MyMesh::onAckRecv(mesh::Packet* packet, uint32_t ack_crc) {
+  if (processRoomAck((uint8_t*)&ack_crc)) packet->markDoNotRetransmit();
+}
+
+void MyMesh::roomLoop() {
+  if (room_dirty_contacts_expiry && millisHasNowPassed(room_dirty_contacts_expiry)) {
+    room_acl.save(_fs);
+    room_dirty_contacts_expiry = 0;
+  }
+  if (!room_next_push || !millisHasNowPassed(room_next_push) || room_acl.getNumClients() == 0) return;
+  for (int i = 0; i < room_acl.getNumClients(); i++) {
+    ClientInfo* c = room_acl.getClientByIdx(i);
+    if (c->extra.room.pending_ack && millisHasNowPassed(c->extra.room.ack_timeout)) {
+      c->extra.room.push_failures++;
+      c->extra.room.pending_ack = 0;
+    }
+  }
+  int count = room_acl.getNumClients();
+  if (room_next_client_idx >= count) room_next_client_idx = 0;
+  ClientInfo* client = room_acl.getClientByIdx(room_next_client_idx);
+  bool did_push = false;
+  if (client->extra.room.pending_ack == 0 && client->last_activity != 0 &&
+      client->extra.room.push_failures < 3) {
+    uint32_t now = getRTCClock()->getCurrentTime();
+    for (int k = 0, idx = room_next_post_idx; k < ROOM_MAX_UNSYNCED_POSTS; k++) {
+      RoomPostInfo* post = &room_posts[idx];
+      if (post->post_timestamp && now >= post->post_timestamp + 6 &&
+          post->post_timestamp > client->extra.room.sync_since && !post->author.matches(client->id)) {
+        roomPushPost(client, *post);
+        did_push = true;
+        break;
+      }
+      idx = (idx + 1) % ROOM_MAX_UNSYNCED_POSTS;
+    }
+  }
+  room_next_client_idx = (room_next_client_idx + 1) % count;
+  room_next_push = futureMillis(did_push ? 1200 : 150);
+}
+
 static bool isShare(const mesh::Packet *packet) {
   if (packet->hasTransportCodes()) {
     return packet->transport_codes[0] == 0 && packet->transport_codes[1] == 0;  // codes { 0, 0 } means 'send to nowhere'
