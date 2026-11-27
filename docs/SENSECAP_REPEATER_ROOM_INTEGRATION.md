@@ -92,6 +92,7 @@ Implemented on the feature branch:
 - Both standard advert types are signed by their respective identities; Room discovery responses are supported and Room advertisements are staggered from Repeater advertisements.
 - Room login, standard request handling, text posts, ACK handling, CLI replies and post synchronization have been integrated into the Repeater application.
 - All Room service transmissions, including ACKs, use queue priority 4, below normal Repeater forwarding/control traffic (priorities 0–3). The shared packet manager and Dispatcher remain the only TX scheduler.
+- Room outbound enqueue is capped when the shared queue has four or more packets or fewer than four packet buffers remain free. The SenseCAP target pool is increased from 32 to 36, preserving the Repeater's original 32-buffer capacity while reserving a small bounded allowance for Room traffic.
 - Room post storage and Room contacts use the dedicated 100 KiB ExtraFS; Repeater settings, Repeater contacts and both identity files remain on the original InternalFS.
 - Room posts use a two-slot LittleFS journal on ExtraFS with per-record checksums, generation selection, bounded compaction at 48 KiB, recovery of valid records before a corrupt/truncated tail, and no ACK until the new post has been written. The service retains the latest 32 posts for client synchronization.
 - The SenseCAP Solar Repeater target reserves and mounts the 100 KiB ExtraFS region at `0xD4000`–`0xED000`, using `nrf52840_s140_v7_extrafs.ld`. The existing 28 KiB InternalFS at `0xED000` remains available for the Repeater's existing settings and identities. Room contacts and posts use ExtraFS.
@@ -102,6 +103,7 @@ Storage source audit:
 - MeshCore's nRF52 ExtraFS configuration reserves 0x19000 bytes (102,400 bytes) at 0xD4000, with 128-byte blocks.
 - CustomLFS uses LittleFS and automatically formats its configured region if mounting fails. The ExtraFS region is excluded from the application image by the alternate linker script.
 - The ExtraFS region is a reserved portion of the nRF52840 internal flash. It is not the separate 2 MB onboard flash listed in Seeed's board specification.
+- If ExtraFS fails to mount/format, the firmware starts as a Repeater only; the Room identity is not receive-active and Room storage is not touched. This isolates Room storage faults from core Repeater availability.
 - The ExtraFS configuration must be verified by the SenseCAP target build before flashing.
 
 ## Remaining implementation and verification
