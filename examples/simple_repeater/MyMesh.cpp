@@ -1248,7 +1248,7 @@ void MyMesh::onRoomPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender_i
     if (send_ack) {
       if (client->out_path_len == OUT_PATH_UNKNOWN) {
         mesh::Packet* ack = createAck(ack_hash);
-        if (ack) sendRoomFloodReply(ack, ROOM_TXT_ACK_DELAY, packet->getPathHashSize());
+        if (ack) sendRoomFloodReply(ack, ROOM_TXT_ACK_DELAY, packet->getPathHashSize(), 1);
         delay = ROOM_TXT_ACK_DELAY + 1500;
       } else {
         uint32_t d = ROOM_TXT_ACK_DELAY;
