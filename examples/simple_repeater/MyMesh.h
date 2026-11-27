@@ -217,8 +217,20 @@ protected:
   void getPeerSharedSecret(uint8_t* dest_secret, int peer_idx) override;
   int searchPeersByHashForIdentity(const mesh::LocalIdentity& local_id, const uint8_t* hash) override;
   void getPeerSharedSecretForIdentity(const mesh::LocalIdentity& local_id, uint8_t* dest_secret, int peer_idx) override;
-  int getLocalIdentityCount() const override { return 2; }
-  mesh::LocalIdentity* getLocalIdentity(int idx) override { return idx == 0 ? &self_id : (idx == 1 ? &room_id : NULL); }
+  int getLocalIdentityCount() const override {
+#if defined(ROOM_EXTRA_FS)
+    return 2;
+#else
+    return 1;
+#endif
+  }
+  mesh::LocalIdentity* getLocalIdentity(int idx) override {
+#if defined(ROOM_EXTRA_FS)
+    return idx == 0 ? &self_id : (idx == 1 ? &room_id : NULL);
+#else
+    return idx == 0 ? &self_id : NULL;
+#endif
+  }
   void setRoomIdentity(const mesh::LocalIdentity& id) { room_id = id; }
   mesh::LocalIdentity& getRoomIdentity() { return room_id; }
   void onAdvertRecv(mesh::Packet* packet, const mesh::Identity& id, uint32_t timestamp, const uint8_t* app_data, size_t app_data_len);
