@@ -2,6 +2,8 @@
 #include <algorithm>
 #include <cstring>
 #include <vector>
+#include <map>
+#include <string>
 #include "helpers/RoomJournalCore.h"
 
 static const uint32_t MAGIC = 0x31505352UL;
@@ -171,6 +173,114 @@ TEST(RoomJournalCore, SequenceRolloverIsSharedWithProductionScanner) {
   auto result = scan(file, seq);
   EXPECT_TRUE(result.valid);
   EXPECT_EQ(0U, result.last_sequence);
+}
+
+
+class FakeJournalStorage {
+public:
+  std::map<std::string, std::vector<uint8_t>> files;
+  std::string active_path;
+  bool opened = false, append_mode = false;
+  size_t cursor = 0;
+  bool fail_open_read = false, fail_open_append = false, fail_read = false;
+  bool fail_seek = false, fail_flush = false, fail_close = false, fail_remove = false;
+  int write_call = 0, short_write_call = -1;
+  size_t short_write_bytes = 0;
+  bool openRead(const char* path) {
+    if (fail_open_read || files.find(path) == files.end()) return false;
+    active_path=path; opened=true; append_mode=false; cursor=0; return true;
+  }
+  bool openAppend(const char* path) {
+    if (fail_open_append) return false;
+    active_path=path; opened=true; append_mode=true; cursor=files[path].size(); return true;
+  }
+  size_t read(uint8_t* data,size_t len) {
+    if (!opened || fail_read) return 0;
+    auto& b=files[active_path]; size_t n=std::min(len,b.size()>cursor?b.size()-cursor:0);
+    if(n) memcpy(data,b.data()+cursor,n); cursor+=n; return n;
+  }
+  size_t write(const uint8_t* data,size_t len) {
+    if(!opened) return 0; write_call++; size_t n=len;
+    if(write_call==short_write_call) n=std::min(n,short_write_bytes);
+    auto& b=files[active_path];
+    if(append_mode){b.insert(b.end(),data,data+n);cursor=b.size();}
+    else {if(cursor+n>b.size()) b.resize(cursor+n); if(n) memcpy(b.data()+cursor,data,n);cursor+=n;}
+    return n;
+  }
+  bool seek(uint32_t offset){if(!opened||fail_seek)return false;cursor=offset;return true;}
+  uint32_t size(){return opened?(uint32_t)files[active_path].size():0;}
+  bool flush(){return opened&&!fail_flush;}
+  bool close(){opened=false;return !fail_close;}
+  bool exists(const char* path){return files.find(path)!=files.end();}
+  bool remove(const char* path){if(fail_remove)return false;files.erase(path);return true;}
+};
+
+static bool compactFake(FakeJournalStorage& storage,const char* path,
+                        const std::vector<Record>& records,uint32_t generation=8,uint32_t* size=nullptr){
+  return roomJournalCompactVerified<FakeJournalStorage,Header,Record>(
+    storage,path,MAGIC,VERSION,generation,(uint16_t)records.size(),32,
+    [&records](uint16_t i,Record& out){if(i>=records.size())return false;out=records[i];return true;},size);
+}
+static RoomJournalScanResult verifyFake(FakeJournalStorage& storage,const char* path,
+                                         std::vector<uint32_t>& seq){
+  return roomJournalVerifySlot<FakeJournalStorage,Header,Record>(
+    storage,path,MAGIC,VERSION,32,[&seq](const Record& r){seq.push_back(r.sequence);});
+}
+
+TEST(RoomJournalTransactions, ProductionCompactionHelperWritesAndVerifiesSlot) {
+  FakeJournalStorage s; s.files["active"]=makeJournal({makeRecord(100,"old")}).bytes;
+  s.files["target"]=makeJournal({makeRecord(90,"stale")}).bytes; auto old=s.files["active"];
+  std::vector<Record> records={makeRecord(101,"first"),makeRecord(102,"second")}; uint32_t size=0;
+  EXPECT_TRUE(compactFake(s,"target",records,8,&size)); EXPECT_EQ(old,s.files["active"]);
+  EXPECT_EQ(sizeof(Header)+2*sizeof(Record),size); std::vector<uint32_t> seq;
+  auto scan=verifyFake(s,"target",seq); EXPECT_TRUE(scan.valid); EXPECT_FALSE(scan.needs_compact);
+  ASSERT_EQ(2U,seq.size()); EXPECT_EQ(102U,seq.back());
+}
+
+TEST(RoomJournalTransactions, CompactionFailuresPreservePreviousActiveSlot) {
+  const std::vector<Record> records={makeRecord(111,"one"),makeRecord(112,"two")};
+  for(int failure=0;failure<8;failure++){
+    FakeJournalStorage s; s.files["active"]=makeJournal({makeRecord(110,"committed")}).bytes;
+    s.files["target"]=makeJournal({makeRecord(90,"stale")}).bytes; auto old=s.files["active"];
+    if(failure==0)s.fail_remove=true; if(failure==1)s.fail_open_append=true;
+    if(failure==2)s.short_write_call=1,s.short_write_bytes=0;
+    if(failure==3)s.short_write_call=2,s.short_write_bytes=sizeof(Record)-1;
+    if(failure==4)s.fail_seek=true; if(failure==5)s.fail_flush=true;
+    if(failure==6)s.fail_close=true; if(failure==7)s.fail_open_read=true;
+    EXPECT_FALSE(compactFake(s,"target",records))<<"failure="<<failure;
+    EXPECT_EQ(old,s.files["active"])<<"failure="<<failure;
+  }
+}
+
+TEST(RoomJournalTransactions, CompactionShortWritesAtEveryHeaderAndRecordBoundary) {
+  const std::vector<Record> records={makeRecord(121,"one")};
+  const size_t lengths[]={sizeof(Header),sizeof(Record),sizeof(Header)};
+  for(int call=1;call<=3;call++) for(size_t cut=0;cut<lengths[call-1];cut++){
+    FakeJournalStorage s; s.files["active"]=makeJournal({makeRecord(120,"safe")}).bytes;
+    auto old=s.files["active"]; s.short_write_call=call;s.short_write_bytes=cut;
+    EXPECT_FALSE(compactFake(s,"target",records))<<"call="<<call<<" cut="<<cut;
+    EXPECT_EQ(old,s.files["active"]);
+  }
+}
+
+TEST(RoomJournalTransactions, ProductionAppendHelperReadBackVerifiesExactRecord) {
+  FakeJournalStorage s; s.files["journal"]=makeJournal({makeRecord(130,"base")}).bytes;
+  const Record appended=makeRecord(131,"append");
+  EXPECT_TRUE(roomJournalAppendVerified<FakeJournalStorage,Record>(s,"journal",appended));
+  std::vector<uint32_t> seq; auto scan=verifyFake(s,"journal",seq); EXPECT_TRUE(scan.valid);
+  ASSERT_EQ(2U,seq.size()); EXPECT_EQ(131U,seq.back());
+}
+
+TEST(RoomJournalTransactions, AppendFailuresAreNotAcknowledged) {
+  const Record appended=makeRecord(141,"append");
+  for(int failure=0;failure<6;failure++){
+    FakeJournalStorage s; s.files["journal"]=makeJournal({makeRecord(140,"base")}).bytes;
+    if(failure==0)s.fail_open_append=true;
+    if(failure==1)s.short_write_call=1,s.short_write_bytes=sizeof(Record)-1;
+    if(failure==2)s.fail_flush=true; if(failure==3)s.fail_close=true;
+    if(failure==4)s.fail_open_read=true; if(failure==5)s.fail_seek=true;
+    EXPECT_FALSE(roomJournalAppendVerified<FakeJournalStorage,Record>(s,"journal",appended))<<"failure="<<failure;
+  }
 }
 
 int main(int argc, char **argv) {
