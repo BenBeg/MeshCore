@@ -2129,11 +2129,15 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply
     reply[0] = 0;
 #if defined(ROOM_EXTRA_FS)
   } else if (strncmp(command, "room.post", 9) == 0) {
-    char* msg = command + 9;
-    while (*msg == ' ') msg++;
-    if (!*msg) strcpy(reply, "ERR empty message");
-    else if (roomStorePost(room_id, msg)) strcpy(reply, "OK");
-    else strcpy(reply, "ERR room storage unavailable");
+    if (!room_service_enabled) {
+      strcpy(reply, "ERR Room service disabled");
+    } else {
+      char* msg = command + 9;
+      while (*msg == ' ') msg++;
+      if (!*msg) strcpy(reply, "ERR empty message");
+      else if (roomStorePost(room_id, msg)) strcpy(reply, "OK");
+      else strcpy(reply, "ERR room storage unavailable");
+    }
 #endif
   } else if (memcmp(command, "discover.neighbors", 18) == 0) {
     const char* sub = command + 18;
