@@ -192,36 +192,54 @@ void ClientACL::loadAtomic(FILESYSTEM* fs, const mesh::LocalIdentity& self_id) {
   bool valid[2] = { readACLSlot(fs, paths[0], &headers[0]),
                     readACLSlot(fs, paths[1], &headers[1]) };
   if (valid[0] || valid[1]) {
-    uint8_t selected = valid[1] && (!valid[0] || (int32_t)(headers[1].generation - headers[0].generation) > 0) ? 1 : 0;
-    _atomic_slot = selected;
-    _atomic_generation = headers[selected].generation;
+    uint8_t selected = atomicSlotNewest(valid[0], headers[0].generation,
+                                           valid[1], headers[1].generation);
+    // Load into a temporary array. A transient second-pass read/seek failure
+    // must not publish a partial ACL or prevent trying the older valid slot.
+    ClientInfo staged[MAX_CLIENTS];
+    int staged_count = 0;
+    uint8_t loaded_slot = 0xFF;
+    bool loaded = atomicSlotLoadWithFallback(valid[0], valid[1], selected,
+      [&](uint8_t slot) {
 #if defined(RP2040_PLATFORM)
-    File file = fs->open(paths[selected], "r");
+        File file = fs->open(paths[slot], "r");
 #else
-    File file = fs->open(paths[selected]);
+        File file = fs->open(paths[slot]);
 #endif
-    num_clients = 0;
-    if (file) {
-      file.seek(sizeof(ACLSlotHeader));
-      uint8_t record[ACL_RECORD_SIZE];
-      for (uint16_t i = 0; i < headers[selected].count; i++) {
-        if (file.read(record, sizeof(record)) != sizeof(record)) break;
-        ClientInfo c;
-        memset(&c, 0, sizeof(c));
-        size_t p = 0;
-        uint8_t pub_key[32];
-        memcpy(pub_key, record + p, 32); p += 32;
-        c.permissions = record[p++];
-        memcpy(&c.extra.room.sync_since, record + p, 4); p += 4;
-        p += 2;
-        c.out_path_len = record[p++];
-        memcpy(c.out_path, record + p, 64); p += 64;
-        memcpy(c.shared_secret, record + p, PUB_KEY_SIZE);
-        c.id = mesh::Identity(pub_key);
-        self_id.calcSharedSecret(c.shared_secret, pub_key);
-        clients[num_clients++] = c;
-      }
-      file.close();
+        if (!file) return false;
+        bool ok = file.seek(sizeof(ACLSlotHeader));
+        uint8_t record[ACL_RECORD_SIZE];
+        staged_count = 0;
+        for (uint16_t i = 0; ok && i < headers[slot].count; i++) {
+          if (file.read(record, sizeof(record)) != sizeof(record)) { ok = false; break; }
+          ClientInfo c;
+          memset(&c, 0, sizeof(c));
+          size_t p = 0;
+          uint8_t pub_key[32];
+          memcpy(pub_key, record + p, 32); p += 32;
+          c.permissions = record[p++];
+          memcpy(&c.extra.room.sync_since, record + p, 4); p += 4;
+          p += 2;
+          c.out_path_len = record[p++];
+          memcpy(c.out_path, record + p, 64); p += 64;
+          memcpy(c.shared_secret, record + p, PUB_KEY_SIZE);
+          c.id = mesh::Identity(pub_key);
+          self_id.calcSharedSecret(c.shared_secret, pub_key);
+          staged[staged_count++] = c;
+        }
+        file.close();
+        if (ok) loaded_slot = slot;
+        return ok;
+      });
+    if (loaded) {
+      memcpy(clients, staged, staged_count * sizeof(ClientInfo));
+      num_clients = staged_count;
+      _atomic_slot = loaded_slot;
+      _atomic_generation = headers[loaded_slot].generation;
+    } else {
+      num_clients = 0;
+      _atomic_slot = 1;
+      _atomic_generation = 0;
     }
     return;
   }
