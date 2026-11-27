@@ -188,7 +188,11 @@ void ClientACL::loadAtomic(FILESYSTEM* fs, const mesh::LocalIdentity& self_id) {
   load(fs, self_id);
   _atomic_generation = 0;
   _atomic_slot = 1;
-  if (num_clients > 0) saveAtomic(fs);
+  if (num_clients > 0 && saveAtomic(fs)) {
+    // The verified slot is now authoritative; remove the stale legacy copy so
+    // a later dual-slot failure cannot resurrect revoked contacts.
+    fs->remove(_storage_path);
+  }
 }
 
 bool ClientACL::saveAtomic(FILESYSTEM* fs, bool (*filter)(ClientInfo*)) {
