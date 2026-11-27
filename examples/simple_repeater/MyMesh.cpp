@@ -1344,7 +1344,7 @@ void MyMesh::onAckRecv(mesh::Packet* packet, uint32_t ack_crc) {
 void MyMesh::roomLoop() {
   if (!room_service_enabled) return;
   if (room_dirty_contacts_expiry && millisHasNowPassed(room_dirty_contacts_expiry)) {
-    if (room_acl.save(_room_fs)) {
+    if (room_acl.saveAtomic(_room_fs)) {
       room_dirty_contacts_expiry = 0;
     } else {
       MESH_DEBUG_PRINTLN("WARNING: Room contacts save failed; retrying");
@@ -1751,7 +1751,7 @@ void MyMesh::begin(FILESYSTEM *fs, FILESYSTEM *room_fs) {
 #if defined(ROOM_EXTRA_FS)
   if (room_service_enabled) {
     room_acl.setStoragePath("/room_contacts");
-    room_acl.load(_room_fs, room_id);
+    room_acl.loadAtomic(_room_fs, room_id);
     loadRoomPosts();
   }
 #endif

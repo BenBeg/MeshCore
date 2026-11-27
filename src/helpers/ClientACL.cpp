@@ -1,4 +1,65 @@
 #include "ClientACL.h"
+#include <stddef.h>
+
+namespace {
+static const uint32_t ACL_SLOT_MAGIC = 0x41434C32UL;
+static const uint16_t ACL_SLOT_VERSION = 1;
+static const size_t ACL_RECORD_SIZE = 136;
+
+struct ACLSlotHeader {
+  uint32_t magic;
+  uint16_t version;
+  uint16_t count;
+  uint32_t generation;
+  uint32_t payload_hash;
+  uint32_t header_hash;
+};
+
+static uint32_t aclHashUpdate(uint32_t hash, const uint8_t* data, size_t len) {
+  for (size_t i = 0; i < len; i++) {
+    hash ^= data[i];
+    hash *= 16777619UL;
+  }
+  return hash;
+}
+
+static void encodeACLRecord(uint8_t out[ACL_RECORD_SIZE], const ClientInfo& c) {
+  size_t p = 0;
+  memcpy(out + p, c.id.pub_key, 32); p += 32;
+  out[p++] = c.permissions;
+  memcpy(out + p, &c.extra.room.sync_since, 4); p += 4;
+  memset(out + p, 0, 2); p += 2;
+  out[p++] = c.out_path_len;
+  memcpy(out + p, c.out_path, 64); p += 64;
+  memcpy(out + p, c.shared_secret, PUB_KEY_SIZE);
+}
+
+static bool readACLSlot(FILESYSTEM* fs, const char* path, ACLSlotHeader* header) {
+#if defined(RP2040_PLATFORM)
+  File file = fs->open(path, "r");
+#else
+  File file = fs->open(path);
+#endif
+  if (!file) return false;
+  ACLSlotHeader h;
+  bool ok = file.read((uint8_t*)&h, sizeof(h)) == sizeof(h);
+  if (ok) {
+    ok = h.magic == ACL_SLOT_MAGIC && h.version == ACL_SLOT_VERSION &&
+         h.count <= MAX_CLIENTS &&
+         h.header_hash == aclHashUpdate(2166136261UL, (const uint8_t*)&h, offsetof(ACLSlotHeader, header_hash));
+  }
+  uint32_t hash = 2166136261UL;
+  uint8_t record[ACL_RECORD_SIZE];
+  for (uint16_t i = 0; ok && i < h.count; i++) {
+    ok = file.read(record, sizeof(record)) == sizeof(record);
+    if (ok) hash = aclHashUpdate(hash, record, sizeof(record));
+  }
+  if (ok) ok = hash == h.payload_hash && file.available() == 0;
+  file.close();
+  if (ok && header) *header = h;
+  return ok;
+}
+}
 
 static File openWrite(FILESYSTEM* _fs, const char* filename) {
   #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
@@ -76,6 +137,105 @@ bool ClientACL::save(FILESYSTEM* fs, bool (*filter)(ClientInfo*)) {
   file.flush();
   file.close();
   return success;
+}
+
+
+void ClientACL::loadAtomic(FILESYSTEM* fs, const mesh::LocalIdentity& self_id) {
+  _fs = fs;
+  char paths[2][48];
+  snprintf(paths[0], sizeof(paths[0]), "%s.0", _storage_path);
+  snprintf(paths[1], sizeof(paths[1]), "%s.1", _storage_path);
+  ACLSlotHeader headers[2];
+  bool valid[2] = { readACLSlot(fs, paths[0], &headers[0]),
+                    readACLSlot(fs, paths[1], &headers[1]) };
+  if (valid[0] || valid[1]) {
+    uint8_t selected = valid[1] && (!valid[0] || (int32_t)(headers[1].generation - headers[0].generation) > 0) ? 1 : 0;
+    _atomic_slot = selected;
+    _atomic_generation = headers[selected].generation;
+#if defined(RP2040_PLATFORM)
+    File file = fs->open(paths[selected], "r");
+#else
+    File file = fs->open(paths[selected]);
+#endif
+    num_clients = 0;
+    if (file) {
+      file.seek(sizeof(ACLSlotHeader));
+      uint8_t record[ACL_RECORD_SIZE];
+      for (uint16_t i = 0; i < headers[selected].count; i++) {
+        if (file.read(record, sizeof(record)) != sizeof(record)) break;
+        ClientInfo c;
+        memset(&c, 0, sizeof(c));
+        size_t p = 0;
+        uint8_t pub_key[32];
+        memcpy(pub_key, record + p, 32); p += 32;
+        c.permissions = record[p++];
+        memcpy(&c.extra.room.sync_since, record + p, 4); p += 4;
+        p += 2;
+        c.out_path_len = record[p++];
+        memcpy(c.out_path, record + p, 64); p += 64;
+        memcpy(c.shared_secret, record + p, PUB_KEY_SIZE);
+        c.id = mesh::Identity(pub_key);
+        self_id.calcSharedSecret(c.shared_secret, pub_key);
+        clients[num_clients++] = c;
+      }
+      file.close();
+    }
+    return;
+  }
+
+  // One-time migration from the legacy single-file format. Keep the old file
+  // untouched until a complete, verified slot has been written.
+  load(fs, self_id);
+  _atomic_generation = 0;
+  _atomic_slot = 1;
+  if (num_clients > 0) saveAtomic(fs);
+}
+
+bool ClientACL::saveAtomic(FILESYSTEM* fs, bool (*filter)(ClientInfo*)) {
+  _fs = fs;
+  char paths[2][48];
+  snprintf(paths[0], sizeof(paths[0]), "%s.0", _storage_path);
+  snprintf(paths[1], sizeof(paths[1]), "%s.1", _storage_path);
+  uint8_t target = 1 - _atomic_slot;
+  uint16_t count = 0;
+  uint32_t payload_hash = 2166136261UL;
+  uint8_t record[ACL_RECORD_SIZE];
+  for (int i = 0; i < num_clients; i++) {
+    ClientInfo* client = &clients[i];
+    if (client->permissions == 0 || (filter && !filter(client))) continue;
+    encodeACLRecord(record, *client);
+    payload_hash = aclHashUpdate(payload_hash, record, sizeof(record));
+    count++;
+  }
+
+  ACLSlotHeader header;
+  memset(&header, 0, sizeof(header));
+  header.magic = ACL_SLOT_MAGIC;
+  header.version = ACL_SLOT_VERSION;
+  header.count = count;
+  header.generation = _atomic_generation + 1;
+  header.payload_hash = payload_hash;
+  header.header_hash = aclHashUpdate(2166136261UL, (const uint8_t*)&header, offsetof(ACLSlotHeader, header_hash));
+
+  File file = openWrite(fs, paths[target]);
+  if (!file) return false;
+  bool success = file.write((const uint8_t*)&header, sizeof(header)) == sizeof(header);
+  for (int i = 0; success && i < num_clients; i++) {
+    ClientInfo* client = &clients[i];
+    if (client->permissions == 0 || (filter && !filter(client))) continue;
+    encodeACLRecord(record, *client);
+    success = file.write(record, sizeof(record)) == sizeof(record);
+  }
+  file.flush();
+  file.close();
+  if (!success) return false;
+
+  ACLSlotHeader verified;
+  if (!readACLSlot(fs, paths[target], &verified) ||
+      verified.generation != header.generation || verified.count != count) return false;
+  _atomic_slot = target;
+  _atomic_generation = header.generation;
+  return true;
 }
 
 bool ClientACL::clear() {

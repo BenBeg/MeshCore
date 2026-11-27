@@ -50,9 +50,11 @@ class ClientACL {
   ClientInfo clients[MAX_CLIENTS];
   int num_clients;
   const char* _storage_path;
+  uint32_t _atomic_generation;
+  uint8_t _atomic_slot;
 
 public:
-  ClientACL() : _storage_path("/s_contacts") {
+  ClientACL() : _storage_path("/s_contacts"), _atomic_generation(0), _atomic_slot(0) {
     memset(clients, 0, sizeof(clients));
     num_clients = 0;
   }
@@ -64,6 +66,8 @@ public:
   }
   void load(FILESYSTEM* _fs, const mesh::LocalIdentity& self_id);
   bool save(FILESYSTEM* _fs, bool (*filter)(ClientInfo*)=NULL);
+  void loadAtomic(FILESYSTEM* fs, const mesh::LocalIdentity& self_id);
+  bool saveAtomic(FILESYSTEM* fs, bool (*filter)(ClientInfo*)=NULL);
   bool clear();
 
   ClientInfo* getClient(const uint8_t* pubkey, int key_len);
