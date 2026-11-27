@@ -999,7 +999,7 @@ void MyMesh::loadRoomPosts() {
   uint32_t gen_a = 0, gen_b = 0;
   bool valid_a = verifyRoomPostFile(0, &gen_a, false);
   bool valid_b = verifyRoomPostFile(1, &gen_b, false);
-  uint8_t first = valid_b && (!valid_a || gen_b > gen_a) ? 1 : 0;
+  uint8_t first = valid_b && (!valid_a || (int32_t)(gen_b - gen_a) > 0) ? 1 : 0;
   if ((first == 0 && valid_a && verifyRoomPostFile(0, &gen_a, true)) ||
       (first == 1 && valid_b && verifyRoomPostFile(1, &gen_b, true))) {
     room_journal_slot = first;
