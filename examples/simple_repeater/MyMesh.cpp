@@ -1806,7 +1806,11 @@ void MyMesh::applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, 
 
 bool MyMesh::formatFileSystem() {
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
-  return InternalFS.format();
+  bool ok = InternalFS.format();
+#if defined(ROOM_EXTRA_FS)
+  if (_room_fs) ok = _room_fs->format() && ok;
+#endif
+  return ok;
 #elif defined(RP2040_PLATFORM)
   return LittleFS.format();
 #elif defined(ESP32)
