@@ -102,28 +102,34 @@ void setup() {
   mesh::Utils::printHex(Serial, the_mesh.self_id.pub_key, PUB_KEY_SIZE); Serial.println();
 
 #if defined(ROOM_EXTRA_FS)
+  bool room_identity_ready = false;
   mesh::LocalIdentity room_id;
-  if (!store.load("_room", room_id)) {
+  if (store.load("_room", room_id)) {
+    room_identity_ready = true;
+  } else {
     room_id = radio_new_identity();
     int count = 0;
     while (count < 10 && (room_id.pub_key[0] == 0x00 || room_id.pub_key[0] == 0xFF)) {
       room_id = radio_new_identity();
       count++;
     }
-    if (!store.save("_room", room_id)) {
-      Serial.println("ERROR: unable to save Room identity");
-      halt();
+    if (store.save("_room", room_id)) {
+      mesh::LocalIdentity verify_room_id;
+      if (store.load("_room", verify_room_id) && verify_room_id.matches(room_id)) {
+        room_id = verify_room_id;
+        room_identity_ready = true;
+      } else {
+        Serial.println("WARNING: Room identity read-back verification failed; starting Repeater only");
+      }
+    } else {
+      Serial.println("WARNING: unable to save Room identity; starting Repeater only");
     }
-    mesh::LocalIdentity verify_room_id;
-    if (!store.load("_room", verify_room_id) || !verify_room_id.matches(room_id)) {
-      Serial.println("ERROR: Room identity read-back verification failed");
-      halt();
-    }
-    room_id = verify_room_id;
   }
-  the_mesh.setRoomIdentity(room_id);
-  Serial.print("Room ID: ");
-  mesh::Utils::printHex(Serial, the_mesh.getRoomIdentity().pub_key, PUB_KEY_SIZE); Serial.println();
+  if (room_identity_ready) {
+    the_mesh.setRoomIdentity(room_id);
+    Serial.print("Room ID: ");
+    mesh::Utils::printHex(Serial, the_mesh.getRoomIdentity().pub_key, PUB_KEY_SIZE); Serial.println();
+  }
 #endif
 
   command[0] = 0;
@@ -135,8 +141,10 @@ void setup() {
 
 #if defined(ROOM_EXTRA_FS)
   FILESYSTEM* room_fs = NULL;
-  if (RoomExtraFS.begin()) {
+  if (room_identity_ready && RoomExtraFS.begin()) {
     room_fs = &RoomExtraFS;
+  } else if (!room_identity_ready) {
+    Serial.println("WARNING: Room identity unavailable; Repeater will run without Room service");
   } else {
     Serial.println("WARNING: Room ExtraFS unavailable; Repeater will run without Room service");
   }
