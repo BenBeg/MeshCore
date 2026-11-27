@@ -1,6 +1,6 @@
 # SenseCAP Solar Repeater + Room Server Integration
 
-Status: source-audit design note; implementation has not started.
+Status: implementation in progress; source changes are committed to the feature branch, pending CI compilation and hardware validation.
 
 Target branch: `feature/sensecap-repeater-room`
 Target PlatformIO environment: `SenseCap_Solar_repeater`
