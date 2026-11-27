@@ -49,11 +49,18 @@ class ClientACL {
   FILESYSTEM* _fs;
   ClientInfo clients[MAX_CLIENTS];
   int num_clients;
+  const char* _storage_path;
 
 public:
-  ClientACL() { 
+  ClientACL() : _storage_path("/s_contacts") {
     memset(clients, 0, sizeof(clients));
     num_clients = 0;
+  }
+
+  // Select a separate persistence file for services with independent identities.
+  // The default remains /s_contacts for backwards compatibility.
+  void setStoragePath(const char* path) {
+    _storage_path = (path && path[0]) ? path : "/s_contacts";
   }
   void load(FILESYSTEM* _fs, const mesh::LocalIdentity& self_id);
   void save(FILESYSTEM* _fs, bool (*filter)(ClientInfo*)=NULL);
