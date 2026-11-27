@@ -1248,17 +1248,17 @@ void MyMesh::onRoomPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender_i
     if (send_ack) {
       if (client->out_path_len == OUT_PATH_UNKNOWN) {
         mesh::Packet* ack = createAck(ack_hash);
-        if (ack) sendRoomFloodReply(ack, ROOM_TXT_ACK_DELAY, packet->getPathHashSize(), 1);
+        if (ack) sendRoomFloodReply(ack, ROOM_TXT_ACK_DELAY, packet->getPathHashSize(), ROOM_TX_PRIORITY);
         delay = ROOM_TXT_ACK_DELAY + 1500;
       } else {
         uint32_t d = ROOM_TXT_ACK_DELAY;
         if (getExtraAckTransmitCount() > 0) {
           mesh::Packet* a1 = createMultiAck(ack_hash, 1);
-          if (a1) sendDirectPriority(a1, client->out_path, client->out_path_len, d, 1);
+          if (a1) sendDirectPriority(a1, client->out_path, client->out_path_len, d, ROOM_TX_PRIORITY);
           d += 300;
         }
         mesh::Packet* a2 = createAck(ack_hash);
-        if (a2) sendDirectPriority(a2, client->out_path, client->out_path_len, d, 1);
+        if (a2) sendDirectPriority(a2, client->out_path, client->out_path_len, d, ROOM_TX_PRIORITY);
         delay = d + 1500;
       }
     }
@@ -1292,7 +1292,7 @@ void MyMesh::onRoomPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender_i
         auto ack = createAck(ack_hash);
         if (ack) {
           ack->payload[ack->payload_len++] = roomGetUnsyncedCount(client);
-          sendDirectPriority(ack, client->out_path, client->out_path_len, ROOM_SERVER_RESPONSE_DELAY, 1);
+          sendDirectPriority(ack, client->out_path, client->out_path_len, ROOM_SERVER_RESPONSE_DELAY, ROOM_TX_PRIORITY);
         }
       }
     } else {
