@@ -712,7 +712,7 @@ bool MyMesh::onPeerPathRecvForIdentity(mesh::Packet* packet, const mesh::LocalId
 
 
 
-#define ROOM_JOURNAL_MAX_BYTES 7500
+#define ROOM_JOURNAL_MAX_BYTES 48000
 #define ROOM_JOURNAL_MAGIC 0x31505352UL  // "RSP1"
 #define ROOM_JOURNAL_VERSION 1
 
