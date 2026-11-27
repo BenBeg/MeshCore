@@ -1261,6 +1261,7 @@ void MyMesh::onRoomPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender_i
     client->last_timestamp = timestamp;
     client->last_activity = getRTCClock()->getCurrentTime();
     client->extra.room.push_failures = 0;
+    room_next_push = futureMillis(100);
     if (data[4] == 0x02 && packet->isRouteDirect()) {
       uint32_t since = 0;
       if (len >= 9) memcpy(&since, &data[5], 4);
@@ -1304,6 +1305,7 @@ bool MyMesh::onRoomPeerPathRecv(mesh::Packet* packet, int sender_idx, const uint
   ClientInfo* client = room_acl.getClientByIdx(i);
   client->out_path_len = mesh::Packet::copyPath(client->out_path, path, path_len);
   client->last_activity = getRTCClock()->getCurrentTime();
+  room_next_push = futureMillis(100);
   if (extra_type == PAYLOAD_TYPE_ACK && extra_len >= 4) processRoomAck(extra);
   return false;
 }
