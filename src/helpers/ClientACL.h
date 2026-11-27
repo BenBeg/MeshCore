@@ -52,9 +52,10 @@ class ClientACL {
   const char* _storage_path;
   uint32_t _atomic_generation;
   uint8_t _atomic_slot;
+  bool _atomic_mode;
 
 public:
-  ClientACL() : _storage_path("/s_contacts"), _atomic_generation(0), _atomic_slot(0) {
+  ClientACL() : _storage_path("/s_contacts"), _atomic_generation(0), _atomic_slot(0), _atomic_mode(false) {
     memset(clients, 0, sizeof(clients));
     num_clients = 0;
   }
