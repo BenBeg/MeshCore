@@ -398,7 +398,7 @@ void MyMesh::sendRoomSelfAdvertisement(int delay_millis, bool flood) {
   mesh::Packet* pkt = createRoomAdvert();
   if (!pkt) return;
   if (flood) sendRoomFloodScoped(default_scope, pkt, delay_millis, _prefs.path_hash_mode + 1);
-  else sendZeroHopPriority(pkt, delay_millis, ROOM_TX_PRIORITY);
+  else sendRoomZeroHopPriority(pkt, delay_millis, ROOM_TX_PRIORITY);
 }
 
 
@@ -1024,7 +1024,7 @@ void MyMesh::loadRoomPosts() {
 
 
 
-void MyMesh::roomPushPost(ClientInfo* client, RoomPostInfo& post) {
+bool MyMesh::roomPushPost(ClientInfo* client, RoomPostInfo& post) {
   int len = 0;
   memcpy(&reply_data[len], &post.post_timestamp, 4); len += 4;
   uint8_t attempt;
@@ -1040,17 +1040,25 @@ void MyMesh::roomPushPost(ClientInfo* client, RoomPostInfo& post) {
                               client->shared_secret, reply_data, len);
   if (!reply) {
     client->extra.room.pending_ack = 0;
-    return;
+    return false;
   }
+  bool queued;
   if (client->out_path_len == OUT_PATH_UNKNOWN) {
-    sendRoomFloodScoped(default_scope, reply, 0, _prefs.path_hash_mode + 1);
-    client->extra.room.ack_timeout = futureMillis(12000);
+    queued = sendRoomFloodScoped(default_scope, reply, 0, _prefs.path_hash_mode + 1);
+    if (queued) client->extra.room.ack_timeout = futureMillis(12000);
   } else {
-    sendDirectPriority(reply, client->out_path, client->out_path_len, 0, ROOM_TX_PRIORITY);
-    uint8_t count = client->out_path_len & 63;
-    client->extra.room.ack_timeout = futureMillis(4000 + 2000 * (count + 1));
+    queued = sendRoomDirectPriority(reply, client->out_path, client->out_path_len, 0, ROOM_TX_PRIORITY);
+    if (queued) {
+      uint8_t count = client->out_path_len & 63;
+      client->extra.room.ack_timeout = futureMillis(4000 + 2000 * (count + 1));
+    }
+  }
+  if (!queued) {
+    client->extra.room.pending_ack = 0;
+    return false;
   }
   room_num_post_pushes++;
+  return true;
 }
 
 uint8_t MyMesh::roomGetUnsyncedCount(ClientInfo* client) {
@@ -1126,7 +1134,7 @@ void MyMesh::onRoomAnonDataRecv(mesh::Packet* packet, const uint8_t* secret,
         client->shared_secret, reply_data, 13);
     if (reply) {
       if (client->out_path_len != OUT_PATH_UNKNOWN)
-        sendDirectPriority(reply, client->out_path, client->out_path_len, ROOM_SERVER_RESPONSE_DELAY, ROOM_TX_PRIORITY);
+        sendRoomDirectPriority(reply, client->out_path, client->out_path_len, ROOM_SERVER_RESPONSE_DELAY, ROOM_TX_PRIORITY);
       else sendRoomFloodReply(reply, ROOM_SERVER_RESPONSE_DELAY, packet->getPathHashSize());
     }
   }
@@ -1362,8 +1370,7 @@ void MyMesh::roomLoop() {
       RoomPostInfo* post = &room_posts[idx];
       if (post->post_timestamp && now >= post->post_timestamp + 6 &&
           post->post_timestamp > client->extra.room.sync_since && !post->author.matches(client->id)) {
-        roomPushPost(client, *post);
-        did_push = true;
+        did_push = roomPushPost(client, *post);
         break;
       }
       idx = (idx + 1) % ROOM_MAX_UNSYNCED_POSTS;
