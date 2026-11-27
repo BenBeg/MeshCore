@@ -2,6 +2,10 @@
 #include <Mesh.h>
 
 #include "MyMesh.h"
+#if defined(ROOM_EXTRA_FS)
+  #include <CustomLFS.h>
+  CustomLFS RoomExtraFS(0xD4000, 0x19000, 128);
+#endif
 
 #ifdef DISPLAY_CLASS
   #include "UITask.h"
@@ -118,7 +122,15 @@ void setup() {
 
   sensors.begin();
 
+#if defined(ROOM_EXTRA_FS)
+  if (!RoomExtraFS.begin()) {
+    MESH_DEBUG_PRINTLN("Room ExtraFS initialization failed!");
+    halt();
+  }
+  the_mesh.begin(fs, &RoomExtraFS);
+#else
   the_mesh.begin(fs);
+#endif
 
 #ifdef DISPLAY_CLASS
   ui_task.begin(the_mesh.getNodePrefs(), FIRMWARE_BUILD_DATE, FIRMWARE_VERSION);
