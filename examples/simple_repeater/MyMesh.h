@@ -86,6 +86,8 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   bool _logging;
   NodePrefs _prefs;
   ClientACL  acl;
+  ClientACL room_acl;
+  mesh::LocalIdentity room_id;
   CommonCLI _cli;
   uint8_t reply_data[MAX_PACKET_PAYLOAD];
   uint8_t reply_path[MAX_PATH_SIZE];
@@ -110,6 +112,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   uint8_t pending_sf;
   uint8_t pending_cr;
   int  matching_peer_indexes[MAX_CLIENTS];
+  int  room_matching_peer_indexes[MAX_CLIENTS];
 #if defined(WITH_RS232_BRIDGE)
   RS232Bridge bridge;
 #elif defined(WITH_ESPNOW_BRIDGE)
@@ -168,6 +171,12 @@ protected:
   void onAnonDataRecv(mesh::Packet* packet, const uint8_t* secret, const mesh::Identity& sender, uint8_t* data, size_t len) override;
   int searchPeersByHash(const uint8_t* hash) override;
   void getPeerSharedSecret(uint8_t* dest_secret, int peer_idx) override;
+  int searchPeersByHashForIdentity(const mesh::LocalIdentity& local_id, const uint8_t* hash) override;
+  void getPeerSharedSecretForIdentity(const mesh::LocalIdentity& local_id, uint8_t* dest_secret, int peer_idx) override;
+  int getLocalIdentityCount() const override { return 2; }
+  mesh::LocalIdentity* getLocalIdentity(int idx) override { return idx == 0 ? &self_id : (idx == 1 ? &room_id : NULL); }
+  void setRoomIdentity(const mesh::LocalIdentity& id) { room_id = id; }
+  mesh::LocalIdentity& getRoomIdentity() { return room_id; }
   void onAdvertRecv(mesh::Packet* packet, const mesh::Identity& id, uint32_t timestamp, const uint8_t* app_data, size_t app_data_len);
   void onPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender_idx, const uint8_t* secret, uint8_t* data, size_t len) override;
   bool onPeerPathRecv(mesh::Packet* packet, int sender_idx, const uint8_t* secret, uint8_t* path, uint8_t path_len, uint8_t extra_type, uint8_t* extra, uint8_t extra_len) override;
