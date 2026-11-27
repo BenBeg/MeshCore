@@ -450,22 +450,22 @@ void MyMesh::sendFloodReply(mesh::Packet* packet, unsigned long delay_millis, ui
   }
 }
 
-void MyMesh::sendRoomFloodReply(mesh::Packet* packet, unsigned long delay_millis, uint8_t path_hash_size, uint8_t priority) {
+bool MyMesh::sendRoomFloodReply(mesh::Packet* packet, unsigned long delay_millis, uint8_t path_hash_size, uint8_t priority) {
   TransportKey req_scope;
   bool is_wildcard = recv_pkt_region != NULL && recv_pkt_region->isWildcard();
   bool req_scope_known = recv_pkt_region != NULL && !is_wildcard
                       && region_map.getTransportKeysFor(*recv_pkt_region, &req_scope, 1) > 0;
   switch (mesh::chooseReplyScope(req_scope_known, is_wildcard, !default_scope.isNull())) {
     case mesh::REPLY_SCOPE_REQUEST:
-      sendRoomFloodScoped(req_scope, packet, delay_millis, path_hash_size, priority);
-      break;
+      return sendRoomFloodScoped(req_scope, packet, delay_millis, path_hash_size, priority);
     case mesh::REPLY_SCOPE_DEFAULT:
-      sendRoomFloodScoped(default_scope, packet, delay_millis, path_hash_size, priority);
-      break;
-    case mesh::REPLY_SCOPE_NONE:
-      sendFloodPriority(packet, delay_millis, path_hash_size, priority);
-      break;
+      return sendRoomFloodScoped(default_scope, packet, delay_millis, path_hash_size, priority);
+    case mesh::REPLY_SCOPE_NONE: {
+      TransportKey no_scope;
+      return sendRoomFloodScoped(no_scope, packet, delay_millis, path_hash_size, priority);
+    }
   }
+  return false;
 }
 
 bool MyMesh::allowPacketForward(const mesh::Packet *packet) {
@@ -1783,7 +1783,17 @@ void MyMesh::sendFloodScoped(const TransportKey& scope, mesh::Packet* pkt, uint3
   }
 }
 
-void MyMesh::sendRoomFloodScoped(const TransportKey& scope, mesh::Packet* pkt, uint32_t delay_millis, uint8_t path_hash_size, uint8_t priority) {
+bool MyMesh::canQueueRoomPacket(mesh::Packet* packet) {
+  if (_mgr == NULL || _mgr->getOutboundTotal() >= ROOM_MAX_PENDING_TX ||
+      _mgr->getFreeCount() < ROOM_RESERVED_FREE_PACKETS) {
+    if (_mgr) _mgr->free(packet);
+    return false;
+  }
+  return true;
+}
+
+bool MyMesh::sendRoomFloodScoped(const TransportKey& scope, mesh::Packet* pkt, uint32_t delay_millis, uint8_t path_hash_size, uint8_t priority) {
+  if (!canQueueRoomPacket(pkt)) return false;
   if (scope.isNull()) {
     sendFloodPriority(pkt, delay_millis, path_hash_size, priority);
   } else {
@@ -1792,6 +1802,19 @@ void MyMesh::sendRoomFloodScoped(const TransportKey& scope, mesh::Packet* pkt, u
     codes[1] = 0;
     sendFloodPriority(pkt, codes, delay_millis, path_hash_size, priority);
   }
+  return true;
+}
+
+bool MyMesh::sendRoomDirectPriority(mesh::Packet* packet, const uint8_t* path, uint8_t path_len, uint32_t delay_millis, uint8_t priority) {
+  if (!canQueueRoomPacket(packet)) return false;
+  sendDirectPriority(packet, path, path_len, delay_millis, priority);
+  return true;
+}
+
+bool MyMesh::sendRoomZeroHopPriority(mesh::Packet* packet, uint32_t delay_millis, uint8_t priority) {
+  if (!canQueueRoomPacket(packet)) return false;
+  sendZeroHopPriority(packet, delay_millis, priority);
+  return true;
 }
 
 void MyMesh::applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins) {
