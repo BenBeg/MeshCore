@@ -130,6 +130,9 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   unsigned long room_dirty_contacts_expiry, room_next_push;
   uint16_t room_num_posted, room_num_post_pushes;
   int room_next_client_idx, room_next_post_idx;
+  uint8_t room_post_count, room_journal_slot;
+  uint32_t room_journal_generation, room_next_sequence, room_journal_size;
+  bool room_journal_ready, room_journal_needs_compact;
   RoomPostInfo room_posts[ROOM_MAX_UNSYNCED_POSTS];
 #if defined(WITH_RS232_BRIDGE)
   RS232Bridge bridge;
@@ -145,8 +148,11 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   int handleRequest(ClientInfo* sender, uint32_t sender_timestamp, uint8_t* payload, size_t payload_len);
   mesh::Packet* createSelfAdvert();
   mesh::Packet* createRoomAdvert();
-  void roomAddPost(ClientInfo* client, const char* text);
-  void roomStorePost(const mesh::Identity& author, const char* text);
+  bool roomAddPost(ClientInfo* client, const char* text);
+  bool roomStorePost(const mesh::Identity& author, const char* text);
+  void loadRoomPosts();
+  bool compactRoomPosts();
+  bool verifyRoomPostFile(uint8_t slot, uint32_t* generation, bool load_posts);
   void roomPushPost(ClientInfo* client, RoomPostInfo& post);
   uint8_t roomGetUnsyncedCount(ClientInfo* client);
   bool processRoomAck(const uint8_t* data);
