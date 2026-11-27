@@ -2,6 +2,7 @@ name: PR Build Check
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main, dev]
     paths:
       - 'src/**'
@@ -31,7 +32,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        environment: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.full_matrix)) && fromJSON('["Heltec_v3_companion_radio_ble","Heltec_v3_repeater","Heltec_v3_room_server","RAK_4631_companion_radio_ble","RAK_4631_companion_radio_ethernet","RAK_4631_repeater","RAK_4631_repeater_ethernet","RAK_4631_room_server","RAK_4631_room_server_ethernet","SenseCap_Solar_repeater","PicoW_repeater","wio-e5-mini_repeater","LilyGo_Tlora_C6_repeater_","wio_wm1110_repeater","Tbeam_SX1276_repeater"]') || fromJSON('["SenseCap_Solar_repeater"]') }}
+        environment: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.full_matrix) || (github.event_name == 'pull_request' && github.event.action == 'ready_for_review')) && fromJSON('["Heltec_v3_companion_radio_ble","Heltec_v3_repeater","Heltec_v3_room_server","RAK_4631_companion_radio_ble","RAK_4631_companion_radio_ethernet","RAK_4631_repeater","RAK_4631_repeater_ethernet","RAK_4631_room_server","RAK_4631_room_server_ethernet","SenseCap_Solar_repeater","PicoW_repeater","wio-e5-mini_repeater","LilyGo_Tlora_C6_repeater_","wio_wm1110_repeater","Tbeam_SX1276_repeater"]') || fromJSON('["SenseCap_Solar_repeater"]') }}
 
     steps:
       - name: Clone Repo
