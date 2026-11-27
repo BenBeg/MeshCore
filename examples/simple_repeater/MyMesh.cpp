@@ -1634,7 +1634,13 @@ void MyMesh::sendNodeDiscoverReq() {
 
 MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondClock &ms, mesh::RNG &rng,
                mesh::RTCClock &rtc, mesh::MeshTables &tables)
-    : mesh::Mesh(radio, ms, rng, rtc, *new StaticPoolPacketManager(36), tables),
+    : mesh::Mesh(radio, ms, rng, rtc,
+#if defined(ROOM_EXTRA_FS)
+                  *new StaticPoolPacketManager(36),
+#else
+                  *new StaticPoolPacketManager(32),
+#endif
+                  tables),
       region_map(key_store), temp_map(key_store),
       _cli(board, rtc, sensors, region_map, acl, &_prefs, this),
       telemetry(MAX_PACKET_PAYLOAD - 4),
