@@ -905,6 +905,7 @@ bool MyMesh::verifyRoomPostFile(uint8_t slot, uint32_t* generation, bool load_po
   }
 
   uint32_t base_hash = 2166136261UL;
+  RoomSequenceTracker sequence_tracker;
   for (uint16_t i = 0; i < header.base_count; i++) {
     RoomJournalRecord record;
     if (file.read((uint8_t*)&record, sizeof(record)) != sizeof(record) ||
@@ -922,7 +923,7 @@ bool MyMesh::verifyRoomPostFile(uint8_t slot, uint32_t* generation, bool load_po
       post.text[record.text_len] = 0;
       room_next_post_idx = (room_next_post_idx + 1) % ROOM_MAX_UNSYNCED_POSTS;
       if (room_post_count < ROOM_MAX_UNSYNCED_POSTS) room_post_count++;
-      if (roomSequenceIsNewer(record.sequence, room_next_sequence)) room_next_sequence = record.sequence;
+      sequence_tracker.observe(record.sequence);
     }
   }
   if (base_hash != header.base_checksum) { file.close(); return false; }
@@ -943,8 +944,9 @@ bool MyMesh::verifyRoomPostFile(uint8_t slot, uint32_t* generation, bool load_po
       post.text[record.text_len] = 0;
       room_next_post_idx = (room_next_post_idx + 1) % ROOM_MAX_UNSYNCED_POSTS;
       if (room_post_count < ROOM_MAX_UNSYNCED_POSTS) room_post_count++;
-      if (roomSequenceIsNewer(record.sequence, room_next_sequence)) room_next_sequence = record.sequence;
+      sequence_tracker.observe(record.sequence);
     }
+    if (sequence_tracker.hasValue()) room_next_sequence = sequence_tracker.value();
     room_num_posted = (uint16_t)room_next_sequence;
     room_journal_size = file.size();
   }
