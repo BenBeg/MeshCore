@@ -1,6 +1,8 @@
 # SenseCAP Solar Repeater + Room Server Integration
 
-Status: implementation in progress. The full 15-target firmware matrix passed on PR head `03b4b1a1af35b3def65815fd14eee6146e370e70`, including the SenseCAP Solar target. Native tests currently have one test-target link failure: the new path-length test file is missing its GoogleTest `main()` entry point; the other 54 test cases passed. Hardware validation remains outstanding.
+Status: implementation in progress. Native unit tests passed on PR head `2cc4dbbe5015c3f67d7c256294d3d3f813bdb040` after adding the missing GoogleTest entry point. The full 15-target matrix for that commit is still running; 14 jobs have completed successfully and one job was still in progress at the last check. Hardware validation remains outstanding.
+
+**Bench protocol:** see [Three-Device Lab Protocol](./THREE_DEVICE_LAB_PROTOCOL.md) for the complete stock-versus-combined test plan using one SenseCAP P1-Pro and two vanilla MeshCore ThinkNode M5 clients, including RF compliance gate, setup, logs, expected behavior and pass/fail scorecard.
 
 Target branch: `feature/sensecap-repeater-room`
 Target PlatformIO environment: `SenseCap_Solar_repeater`
@@ -69,6 +71,8 @@ The current RAM-only cyclic queue is insufficient. Implement a bounded, recovera
 
 ## Acceptance tests
 
+The detailed execution sequence, device roles, logging/evidence requirements and result sheet are maintained in [THREE_DEVICE_LAB_PROTOCOL.md](./THREE_DEVICE_LAB_PROTOCOL.md). The protocol explicitly separates source/build verification from physical interoperability evidence and does not authorize RF transmission or firmware flashing.
+
 1. Unmodified MeshCore clients discover and connect to the Repeater identity.
 2. Existing repeaters forward through the combined device exactly as through the unmodified Repeater.
 3. Unmodified MeshCore clients discover and connect to the Room identity.
@@ -115,4 +119,4 @@ Storage source audit:
 - Test power-loss recovery, full ExtraFS behavior, ACL persistence, and simultaneous Repeater/Room traffic.
 - Back up existing device firmware/data and verify a documented recovery route before hardware flashing.
 
-Latest CI verification (2026-11-27): all 15 supported firmware targets and native unit tests passed on commit 36f9b80f6d74b21eed5c65ca7323b347f4f250e0. Hardware storage/power/radio testing, official-client interoperability and Canadian ISED compliance verification remain outstanding. No firmware has been flashed.
+Latest verified CI (2026-11-27): native unit tests passed on PR head `2cc4dbbe5015c3f67d7c256294d3d3f813bdb040`. The full matrix for that head was still in progress at the last status check (14 of 15 jobs complete successfully; one job still running). Hardware storage/power/radio testing, official-client interoperability and Canadian ISED compliance verification remain outstanding. No firmware has been flashed.
