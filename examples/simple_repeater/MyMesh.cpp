@@ -1337,7 +1337,7 @@ bool MyMesh::onRoomPeerPathRecv(mesh::Packet* packet, int sender_idx, const uint
   int i = room_matching_peer_indexes[sender_idx];
   if (i < 0 || i >= room_acl.getNumClients()) return false;
   ClientInfo* client = room_acl.getClientByIdx(i);
-  uint8_t new_path[sizeof(client->out_path)];
+  uint8_t new_path[sizeof(client->out_path)] = {};
   uint8_t new_path_len = mesh::Packet::copyPath(new_path, path, path_len);
   if (client->out_path_len != new_path_len ||
       memcmp(client->out_path, new_path, sizeof(client->out_path)) != 0) {
