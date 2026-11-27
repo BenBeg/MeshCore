@@ -158,7 +158,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   void loadRoomPosts();
   bool compactRoomPosts();
   bool verifyRoomPostFile(uint8_t slot, uint32_t* generation, bool load_posts);
-  void roomPushPost(ClientInfo* client, RoomPostInfo& post);
+  bool roomPushPost(ClientInfo* client, RoomPostInfo& post);
   uint8_t roomGetUnsyncedCount(ClientInfo* client);
   bool processRoomAck(const uint8_t* data);
   int handleRoomRequest(ClientInfo* sender, uint32_t sender_timestamp, uint8_t* payload, size_t payload_len);
