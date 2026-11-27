@@ -78,6 +78,19 @@ struct NeighbourInfo {
 
 #define PACKET_LOG_FILE  "/packet_log"
 
+#ifndef ROOM_MAX_UNSYNCED_POSTS
+  #define ROOM_MAX_UNSYNCED_POSTS 32
+#endif
+#define ROOM_MAX_POST_TEXT_LEN (160-9)
+#define ROOM_SERVER_RESPONSE_DELAY 300
+#define ROOM_TXT_ACK_DELAY 200
+
+struct RoomPostInfo {
+  mesh::Identity author;
+  uint32_t post_timestamp;
+  char text[ROOM_MAX_POST_TEXT_LEN + 1];
+};
+
 class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   FILESYSTEM* _fs;
   uint32_t last_millis;
@@ -114,6 +127,10 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   uint8_t pending_cr;
   int  matching_peer_indexes[MAX_CLIENTS];
   int  room_matching_peer_indexes[MAX_CLIENTS];
+  unsigned long room_dirty_contacts_expiry, room_next_push;
+  uint16_t room_num_posted, room_num_post_pushes;
+  int room_next_client_idx, room_next_post_idx;
+  RoomPostInfo room_posts[ROOM_MAX_UNSYNCED_POSTS];
 #if defined(WITH_RS232_BRIDGE)
   RS232Bridge bridge;
 #elif defined(WITH_ESPNOW_BRIDGE)
@@ -128,6 +145,17 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   int handleRequest(ClientInfo* sender, uint32_t sender_timestamp, uint8_t* payload, size_t payload_len);
   mesh::Packet* createSelfAdvert();
   mesh::Packet* createRoomAdvert();
+  void roomAddPost(ClientInfo* client, const char* text);
+  void roomStorePost(const mesh::Identity& author, const char* text);
+  void roomPushPost(ClientInfo* client, RoomPostInfo& post);
+  uint8_t roomGetUnsyncedCount(ClientInfo* client);
+  bool processRoomAck(const uint8_t* data);
+  int handleRoomRequest(ClientInfo* sender, uint32_t sender_timestamp, uint8_t* payload, size_t payload_len);
+  void handleRoomCommand(uint32_t sender_timestamp, char* command, char* reply);
+  void onRoomAnonDataRecv(mesh::Packet* packet, const uint8_t* secret, const mesh::Identity& sender, uint8_t* data, size_t len);
+  void onRoomPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender_idx, const uint8_t* secret, uint8_t* data, size_t len);
+  bool onRoomPeerPathRecv(mesh::Packet* packet, int sender_idx, const uint8_t* secret, uint8_t* path, uint8_t path_len, uint8_t extra_type, uint8_t* extra, uint8_t extra_len);
+  void roomLoop();
 
   File openAppend(const char* fname);
   bool isLooped(const mesh::Packet* packet, const uint8_t max_counters[]);
@@ -186,6 +214,7 @@ protected:
   void onPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender_idx, const uint8_t* secret, uint8_t* data, size_t len) override;
   bool onPeerPathRecv(mesh::Packet* packet, int sender_idx, const uint8_t* secret, uint8_t* path, uint8_t path_len, uint8_t extra_type, uint8_t* extra, uint8_t extra_len) override;
   void onControlDataRecv(mesh::Packet* packet) override;
+  void onAckRecv(mesh::Packet* packet, uint32_t ack_crc) override;
 
   void sendFloodReply(mesh::Packet* packet, unsigned long delay_millis, uint8_t path_hash_size);
 
