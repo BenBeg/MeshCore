@@ -11,7 +11,7 @@ This fork adds a SenseCAP Solar–focused combined Repeater + Room Server implem
 - **Recoverable Room ACL storage:** adds versioned, checksummed, two-slot persistence with generation selection, verified writes, legacy migration and retry after failed saves.
 - **Persistent Room posts:** adds a bounded two-slot LittleFS journal with record integrity checks, recovery of valid records after a damaged tail, and verified compaction.
 - **Shared, prioritized radio scheduling:** routes Room traffic through the existing Repeater dispatcher and queue at lower priority, with bounded enqueue/pool use so Room traffic cannot displace essential Repeater work.
-- **Synchronization recovery:** persists Room sync progress and learned peer routes, and retries failed ACL writes.
+- **Synchronization recovery:** persists Room sync progress and learned peer routes (including route invalidation after flood logins), and retries failed ACL writes.
 - **Solar power behavior:** schedules Room work around the Repeater's sleep path so future timers do not continuously prevent sleep.
 - **Receive and storage hardening:** validates local identity keypairs, reserves safe receive-buffer terminator space, validates decrypted path bounds and rejects undersized ACK/data headers.
 - **SenseCAP build configuration:** adds the dedicated ExtraFS partition for Room data while retaining the original InternalFS for Repeater settings and identities, plus the North American MeshCore radio preset.
