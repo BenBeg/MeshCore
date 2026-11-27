@@ -134,11 +134,13 @@ void setup() {
   sensors.begin();
 
 #if defined(ROOM_EXTRA_FS)
-  if (!RoomExtraFS.begin()) {
-    MESH_DEBUG_PRINTLN("Room ExtraFS initialization failed!");
-    halt();
+  FILESYSTEM* room_fs = NULL;
+  if (RoomExtraFS.begin()) {
+    room_fs = &RoomExtraFS;
+  } else {
+    Serial.println("WARNING: Room ExtraFS unavailable; Repeater will run without Room service");
   }
-  the_mesh.begin(fs, &RoomExtraFS);
+  the_mesh.begin(fs, room_fs);
 #else
   the_mesh.begin(fs);
 #endif
