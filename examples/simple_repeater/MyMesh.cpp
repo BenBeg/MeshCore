@@ -938,7 +938,7 @@ bool MyMesh::verifyRoomPostFile(uint8_t slot, uint32_t* generation, bool load_po
 bool MyMesh::compactRoomPosts() {
   uint8_t target = room_journal_ready ? (uint8_t)(1 - room_journal_slot) : 0;
   const char* path = roomJournalPath(target);
-  if (_room_fs->exists(path)) _room_fs->remove(path);
+  if (_room_fs->exists(path) && !_room_fs->remove(path)) return false;
 
   RoomJournalHeader header = {};
   header.magic = ROOM_JOURNAL_MAGIC;
@@ -948,7 +948,7 @@ bool MyMesh::compactRoomPosts() {
   header.base_count = room_post_count;
   header.base_checksum = 2166136261UL;
 
-  File file = openRoomJournalAppend(_fs, path);
+  File file = openRoomJournalAppend(_room_fs, path);
   if (!file) return false;
   bool success = file.write((const uint8_t*)&header, sizeof(header)) == sizeof(header);
   int oldest = room_post_count == ROOM_MAX_UNSYNCED_POSTS ? room_next_post_idx : 0;
@@ -1126,8 +1126,8 @@ void MyMesh::onRoomAnonDataRecv(mesh::Packet* packet, const uint8_t* secret,
         client->shared_secret, reply_data, 13);
     if (reply) {
       if (client->out_path_len != OUT_PATH_UNKNOWN)
-        sendDirect(reply, client->out_path, client->out_path_len, ROOM_SERVER_RESPONSE_DELAY);
-      else sendFloodReply(reply, ROOM_SERVER_RESPONSE_DELAY, packet->getPathHashSize());
+        sendDirectPriority(reply, client->out_path, client->out_path_len, ROOM_SERVER_RESPONSE_DELAY, ROOM_TX_PRIORITY);
+      else sendRoomFloodReply(reply, ROOM_SERVER_RESPONSE_DELAY, packet->getPathHashSize());
     }
   }
 }
@@ -1269,8 +1269,8 @@ void MyMesh::onRoomPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender_i
       auto reply = createDatagram(room_id, PAYLOAD_TYPE_TXT_MSG, client->id, secret, temp, 5 + text_len);
       if (reply) {
         if (client->out_path_len == OUT_PATH_UNKNOWN)
-          sendFloodReply(reply, delay + ROOM_SERVER_RESPONSE_DELAY, packet->getPathHashSize());
-        else sendDirect(reply, client->out_path, client->out_path_len, delay + ROOM_SERVER_RESPONSE_DELAY);
+          sendRoomFloodReply(reply, delay + ROOM_SERVER_RESPONSE_DELAY, packet->getPathHashSize());
+        else sendDirectPriority(reply, client->out_path, client->out_path_len, delay + ROOM_SERVER_RESPONSE_DELAY, ROOM_TX_PRIORITY);
       }
     }
   } else if (type == PAYLOAD_TYPE_REQ && len >= 5) {
@@ -1306,8 +1306,8 @@ void MyMesh::onRoomPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender_i
           auto reply = createDatagram(room_id, PAYLOAD_TYPE_RESPONSE, client->id, secret, reply_data, n);
           if (reply) {
             if (client->out_path_len != OUT_PATH_UNKNOWN)
-              sendDirect(reply, client->out_path, client->out_path_len, ROOM_SERVER_RESPONSE_DELAY);
-            else sendFloodReply(reply, ROOM_SERVER_RESPONSE_DELAY, packet->getPathHashSize());
+              sendDirectPriority(reply, client->out_path, client->out_path_len, ROOM_SERVER_RESPONSE_DELAY, ROOM_TX_PRIORITY);
+            else sendRoomFloodReply(reply, ROOM_SERVER_RESPONSE_DELAY, packet->getPathHashSize());
           }
         }
       }
@@ -1577,7 +1577,7 @@ void MyMesh::onControlDataRecv(mesh::Packet* packet) {
       memcpy(&data[2], &tag, 4);
       memcpy(&data[6], room_id.pub_key, PUB_KEY_SIZE);
       auto resp = createControlData(data, prefix_only ? 6 + 8 : 6 + PUB_KEY_SIZE);
-      if (resp) sendZeroHop(resp, getRetransmitDelay(resp) * 4);
+      if (resp) sendZeroHopPriority(resp, getRetransmitDelay(resp) * 4, ROOM_TX_PRIORITY);
     }
   } else if (type == CTL_TYPE_NODE_DISCOVER_RESP && packet->payload_len >= 6) {
     uint8_t node_type = packet->payload[0] & 0x0F;
@@ -2105,14 +2105,14 @@ void MyMesh::loop() {
 
   if (room_next_flood_advert && millisHasNowPassed(room_next_flood_advert)) {
     mesh::Packet* pkt = createRoomAdvert();
-    if (pkt) sendFloodScoped(default_scope, pkt, 0, _prefs.path_hash_mode + 1);
+    if (pkt) sendRoomFloodScoped(default_scope, pkt, 0, _prefs.path_hash_mode + 1);
     room_next_flood_advert = _prefs.flood_advert_interval > 0
       ? futureMillis(((uint32_t)_prefs.flood_advert_interval) * 60 * 60 * 1000 + 60000) : 0;
     room_next_local_advert = _prefs.advert_interval > 0
       ? futureMillis(((uint32_t)_prefs.advert_interval) * 2 * 60 * 1000 + 30000) : 0;
   } else if (room_next_local_advert && millisHasNowPassed(room_next_local_advert)) {
     mesh::Packet* pkt = createRoomAdvert();
-    if (pkt) sendZeroHop(pkt);
+    if (pkt) sendZeroHopPriority(pkt, 0, ROOM_TX_PRIORITY);
     room_next_local_advert = _prefs.advert_interval > 0
       ? futureMillis(((uint32_t)_prefs.advert_interval) * 2 * 60 * 1000 + 30000) : 0;
   }
