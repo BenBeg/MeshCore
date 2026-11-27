@@ -24,7 +24,7 @@ Keep the complete upstream Repeater application and add a standard MeshCore Room
 - Room responses and sync posts use standard MeshCore payloads (`PAYLOAD_TYPE_TXT_MSG`, `PAYLOAD_TYPE_REQ`, `PAYLOAD_TYPE_RESPONSE`, signed-plain text). No new client packet format is needed.
 - Repeater discovery currently responds only as `ADV_TYPE_REPEATER`; combined firmware must also support standard Room discovery as `ADV_TYPE_ROOM`.
 - Dispatcher selects one outbound packet by priority from one queue. The shared packet manager therefore provides the correct single radio scheduler, but Room service work must be bounded and use lower priority than Repeater forwarding/control traffic.
-- `IdentityStore` stores files as `<dir>/<name>.id`; the current main identity is `_main.id`. On NRF52, `save()` removes the target before opening it for write, so it is not an atomic replacement operation.
+- `IdentityStore` stores files as `<dir>/<name>.id`; the Repeater and Room identities are `_main.id` and `_room.id`. On NRF52, `save()` removes the target before opening it for write, so it is not an atomic replacement operation. Boot now verifies first-time identity writes by reading them back, refuses to replace an existing unreadable Repeater identity, and preserves an unreadable Room identity while falling back to Repeater-only mode.
 
 ## Identity and packet-routing design
 
@@ -108,7 +108,8 @@ Storage source audit:
 - MeshCore's nRF52 ExtraFS configuration reserves 0x19000 bytes (102,400 bytes) at 0xD4000, with 128-byte blocks.
 - The pinned CustomLFS 0.2.3 library normally erases/formats its entire region on any mount failure. The SenseCAP firmware now wraps it with SafeRoomExtraFS: mount first; if mounting fails, scan the entire 100 KiB region in 128-byte chunks; format only if every byte is erased (0xFF); if any existing data is present or a read fails, refuse to format and let the Repeater start without Room. The ExtraFS region is excluded from the application image by the alternate linker script.
 - The ExtraFS region is a reserved portion of the nRF52840 internal flash. It is not the separate 2 MB onboard flash listed in Seeed's board specification.
-- If ExtraFS is nonblank but fails to mount, or the blank-region scan/read fails, the firmware starts as a Repeater only; the Room identity is not receive-active and existing Room storage bytes are not intentionally erased. A completely blank first-use partition is formatted and mounted. This isolates Room storage faults from core Repeater availability.
+- If ExtraFS is nonblank but fails to mount, or the blank-region scan/read fails, the firmware starts as a Repeater only; the Room identity is not receive-active and existing Room storage bytes are not intentionally erased. A completely blank first-use partition is formatted and mounted.
+- Atomic Room ACL clearing now writes and verifies a newer empty ACL generation before removing the previous slot, preventing an interrupted clear from selecting an older contact snapshot. Room journal generation comparison is wrap-safe. This isolates Room storage faults from core Repeater availability.
 - The SafeRoomExtraFS wrapper must pass the SenseCAP target build and be verified on hardware with both a blank first-use partition and a deliberately unmountable nonblank test partition before deployment.
 
 ## Remaining implementation and verification
@@ -118,5 +119,6 @@ Storage source audit:
 - Confirm official Android/iOS clients can retain both identities from one physical device and validate Room discovery/login/post synchronization over the air.
 - Test SafeRoomExtraFS first-use formatting and nonblank mount-failure preservation, power-loss recovery, full ExtraFS behavior, ACL persistence, and simultaneous Repeater/Room traffic.
 - Back up existing device firmware/data and verify a documented recovery route before hardware flashing.
+- Exercise identity-file corruption/recovery, atomic ACL clear interruption points, and journal generation rollover in controlled automated or sacrificial-device tests before deployment.
 
-Latest verified CI (2026-11-27): native unit tests and all 15 firmware targets passed on PR head `2cc4dbbe5015c3f67d7c256294d3d3f813bdb040`. The SafeRoomExtraFS data-preservation fix is on the newer head and requires a fresh CI run. Hardware storage/power/radio testing, official-client interoperability and Canadian ISED compliance verification remain outstanding. No firmware has been flashed.
+Latest verified CI (2026-11-27): native unit tests and all 15 firmware targets passed on PR head `2cc4dbbe5015c3f67d7c256294d3d3f813bdb040`. Subsequent storage hardening (SafeRoomExtraFS, identity-file preservation, atomic ACL clear and wrap-safe journal generation selection) is on the newer branch head and requires fresh CI. Hardware storage/power/radio testing, official-client interoperability and Canadian ISED compliance verification remain outstanding. No firmware has been flashed.
