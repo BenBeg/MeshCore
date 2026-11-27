@@ -1356,14 +1356,24 @@ void MyMesh::roomLoop() {
   // Keep the Repeater's solar power-saving mode available. Continue polling only
   // while another client has unsent posts; a pending ACK can wake the radio itself.
   bool ready_work = false;
-  for (int i = 0; i < count && !ready_work; i++) {
+  bool waiting_ack = false;
+  unsigned long earliest_ack_timeout = 0;
+  for (int i = 0; i < count; i++) {
     ClientInfo* c = room_acl.getClientByIdx(i);
-    if (!c->extra.room.pending_ack && c->last_activity != 0 &&
-        c->extra.room.push_failures < 3 && roomGetUnsyncedCount(c) > 0) {
+    if (c->extra.room.pending_ack) {
+      waiting_ack = true;
+      if (!earliest_ack_timeout ||
+          (int32_t)(c->extra.room.ack_timeout - earliest_ack_timeout) < 0) {
+        earliest_ack_timeout = c->extra.room.ack_timeout;
+      }
+    } else if (c->last_activity != 0 && c->extra.room.push_failures < 3 &&
+               roomGetUnsyncedCount(c) > 0) {
       ready_work = true;
     }
   }
-  room_next_push = ready_work ? futureMillis(did_push ? 1200 : 150) : 0;
+  if (ready_work) room_next_push = futureMillis(did_push ? 1200 : 150);
+  else if (waiting_ack) room_next_push = earliest_ack_timeout;
+  else room_next_push = 0;
 }
 
 static bool isShare(const mesh::Packet *packet) {
