@@ -106,7 +106,16 @@ void setup() {
       room_id = radio_new_identity();
       count++;
     }
-    store.save("_room", room_id);
+    if (!store.save("_room", room_id)) {
+      Serial.println("ERROR: unable to save Room identity");
+      halt();
+    }
+    mesh::LocalIdentity verify_room_id;
+    if (!store.load("_room", verify_room_id) || !verify_room_id.matches(room_id)) {
+      Serial.println("ERROR: Room identity read-back verification failed");
+      halt();
+    }
+    room_id = verify_room_id;
   }
   the_mesh.setRoomIdentity(room_id);
 
