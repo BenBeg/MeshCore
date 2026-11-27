@@ -4,7 +4,37 @@
 #include "MyMesh.h"
 #if defined(ROOM_EXTRA_FS)
   #include <CustomLFS.h>
-  CustomLFS RoomExtraFS(0xD4000, 0x19000, 128);
+
+  // CustomLFS 0.2.3 formats (erases) its entire region whenever mount fails.
+  // That is unsafe for persistent Room data: a transient/corrupt mount must
+  // not silently destroy existing posts and ACLs. Only format a demonstrably
+  // erased (all 0xFF) region on first provisioning; otherwise fail closed and
+  // let the Repeater start without the Room service.
+  class SafeRoomExtraFS : public CustomLFS {
+  public:
+    using CustomLFS::CustomLFS;
+
+    bool begin() override {
+      if (Adafruit_LittleFS::begin()) return true;
+
+      uint8_t buffer[128];
+      const uint32_t start = getFlashAddr();
+      const uint32_t size = getFlashSize();
+      for (uint32_t offset = 0; offset < size; offset += sizeof(buffer)) {
+        uint32_t chunk = size - offset;
+        if (chunk > sizeof(buffer)) chunk = sizeof(buffer);
+        if (flash_nrf5x_read(buffer, start + offset, chunk) <= 0) return false;
+        for (uint32_t i = 0; i < chunk; i++) {
+          if (buffer[i] != 0xFF) return false;  // existing/corrupt data: preserve it
+        }
+      }
+
+      if (!formatRegion()) return false;  // blank first-use region only
+      return Adafruit_LittleFS::begin();
+    }
+  };
+
+  SafeRoomExtraFS RoomExtraFS(0xD4000, 0x19000, 128);
 #endif
 
 #ifdef DISPLAY_CLASS
