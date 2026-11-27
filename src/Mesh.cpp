@@ -158,7 +158,7 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
             getPeerSharedSecretForIdentity(*local_id, secret, j);
 
             // decrypt, checking MAC is valid
-            uint8_t data[MAX_PACKET_PAYLOAD];
+            uint8_t data[MAX_PACKET_PAYLOAD + 1];
             int len = Utils::MACThenDecrypt(secret, data, macAndData, pkt->payload_len - i);
             if (len > 0) {  // successful authentication selects this service
               if (pkt->getPayloadType() == PAYLOAD_TYPE_PATH) {
@@ -219,7 +219,7 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
           uint8_t secret[PUB_KEY_SIZE];
           local_id->calcSharedSecret(secret, sender);
 
-          uint8_t data[MAX_PACKET_PAYLOAD];
+          uint8_t data[MAX_PACKET_PAYLOAD + 1];
           int len = Utils::MACThenDecrypt(secret, data, macAndData, pkt->payload_len - i);
           if (len > 0) {
             onAnonDataRecvForIdentity(pkt, *local_id, secret, sender, data, len);
