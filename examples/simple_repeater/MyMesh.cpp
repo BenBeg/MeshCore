@@ -450,20 +450,20 @@ void MyMesh::sendFloodReply(mesh::Packet* packet, unsigned long delay_millis, ui
   }
 }
 
-void MyMesh::sendRoomFloodReply(mesh::Packet* packet, unsigned long delay_millis, uint8_t path_hash_size) {
+void MyMesh::sendRoomFloodReply(mesh::Packet* packet, unsigned long delay_millis, uint8_t path_hash_size, uint8_t priority) {
   TransportKey req_scope;
   bool is_wildcard = recv_pkt_region != NULL && recv_pkt_region->isWildcard();
   bool req_scope_known = recv_pkt_region != NULL && !is_wildcard
                       && region_map.getTransportKeysFor(*recv_pkt_region, &req_scope, 1) > 0;
   switch (mesh::chooseReplyScope(req_scope_known, is_wildcard, !default_scope.isNull())) {
     case mesh::REPLY_SCOPE_REQUEST:
-      sendRoomFloodScoped(req_scope, packet, delay_millis, path_hash_size);
+      sendRoomFloodScoped(req_scope, packet, delay_millis, path_hash_size, priority);
       break;
     case mesh::REPLY_SCOPE_DEFAULT:
-      sendRoomFloodScoped(default_scope, packet, delay_millis, path_hash_size);
+      sendRoomFloodScoped(default_scope, packet, delay_millis, path_hash_size, priority);
       break;
     case mesh::REPLY_SCOPE_NONE:
-      sendFloodPriority(packet, delay_millis, path_hash_size, ROOM_TX_PRIORITY);
+      sendFloodPriority(packet, delay_millis, path_hash_size, priority);
       break;
   }
 }
@@ -1783,14 +1783,14 @@ void MyMesh::sendFloodScoped(const TransportKey& scope, mesh::Packet* pkt, uint3
   }
 }
 
-void MyMesh::sendRoomFloodScoped(const TransportKey& scope, mesh::Packet* pkt, uint32_t delay_millis, uint8_t path_hash_size) {
+void MyMesh::sendRoomFloodScoped(const TransportKey& scope, mesh::Packet* pkt, uint32_t delay_millis, uint8_t path_hash_size, uint8_t priority) {
   if (scope.isNull()) {
-    sendFloodPriority(pkt, delay_millis, path_hash_size, ROOM_TX_PRIORITY);
+    sendFloodPriority(pkt, delay_millis, path_hash_size, priority);
   } else {
     uint16_t codes[2];
     codes[0] = scope.calcTransportCode(pkt);
     codes[1] = 0;
-    sendFloodPriority(pkt, codes, delay_millis, path_hash_size, ROOM_TX_PRIORITY);
+    sendFloodPriority(pkt, codes, delay_millis, path_hash_size, priority);
   }
 }
 
