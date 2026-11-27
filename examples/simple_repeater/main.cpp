@@ -119,13 +119,29 @@ void setup() {
   #error "need to define filesystem"
 #endif
   if (!store.load("_main", the_mesh.self_id)) {
+    // Never replace an existing but unreadable Repeater identity: doing so
+    // would silently orphan the deployed node from its existing contacts.
+    if (fs->exists("/_main.id")) {
+      Serial.println("FATAL: existing Repeater identity is invalid; refusing to replace it");
+      halt();
+    }
+
     MESH_DEBUG_PRINTLN("Generating new keypair");
     the_mesh.self_id = radio_new_identity();   // create new random identity
     int count = 0;
-    while (count < 10 && (the_mesh.self_id.pub_key[0] == 0x00 || the_mesh.self_id.pub_key[0] == 0xFF)) {  // reserved id hashes
+    while (count < 10 && (the_mesh.self_id.pub_key[0] == 0x00 || the_mesh.self_id.pub_key[0] == 0xFF)) {
       the_mesh.self_id = radio_new_identity(); count++;
     }
-    store.save("_main", the_mesh.self_id);
+    if (!store.save("_main", the_mesh.self_id)) {
+      Serial.println("FATAL: unable to save Repeater identity");
+      halt();
+    }
+    mesh::LocalIdentity verify_main_id;
+    if (!store.load("_main", verify_main_id) || !verify_main_id.matches(the_mesh.self_id)) {
+      Serial.println("FATAL: Repeater identity read-back verification failed");
+      halt();
+    }
+    the_mesh.self_id = verify_main_id;
   }
 
   Serial.print("Repeater ID: ");
@@ -136,6 +152,10 @@ void setup() {
   mesh::LocalIdentity room_id;
   if (store.load("_room", room_id)) {
     room_identity_ready = true;
+  } else if (fs->exists("/_room.id")) {
+    // Preserve a damaged Room key file and its associated Room data for
+    // recovery. Do not silently mint a new Room identity over it.
+    Serial.println("WARNING: existing Room identity is invalid; preserving it and starting Repeater only");
   } else {
     room_id = radio_new_identity();
     int count = 0;
