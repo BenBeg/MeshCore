@@ -9,7 +9,7 @@ This fork adds a SenseCAP Solar–focused combined Repeater + Room Server implem
 - **Standard discovery:** advertises both Repeater and Room roles with their respective identities and supports Room discovery responses.
 - **Independent access control:** gives Room its own ACL and storage path, separate from the original Repeater contacts.
 - **Recoverable Room ACL storage:** adds versioned, checksummed, two-slot persistence with generation selection, verified writes, legacy migration and retry after failed saves.
-- **Persistent Room posts:** adds a bounded two-slot LittleFS journal with record integrity checks, recovery of valid records after a damaged tail, and verified compaction. SafeRoomExtraFS now refuses CustomLFS's default erase-on-any-mount-failure behavior: only a fully blank first-use partition is formatted; nonblank mount failures preserve data and disable Room while keeping Repeater available.
+- **Persistent Room posts:** adds a bounded two-slot LittleFS journal with record integrity checks, recovery of valid records after a damaged tail, verified compaction, and read-back verification of each newly appended record before the server acknowledges the post. SafeRoomExtraFS now refuses CustomLFS's default erase-on-any-mount-failure behavior: only a fully blank first-use partition is formatted; nonblank mount failures preserve data and disable Room while keeping Repeater available.
 - **Shared, prioritized radio scheduling:** routes Room traffic through the existing Repeater dispatcher and queue at lower priority, with bounded enqueue/pool use so Room traffic cannot displace essential Repeater work.
 - **Synchronization recovery:** persists Room sync progress and learned peer routes (including route invalidation after flood logins), normalizes route-buffer tails before comparison, and retries failed ACL writes.
 - **Solar power behavior:** schedules Room work around the Repeater's sleep path so future timers do not continuously prevent sleep.
@@ -19,9 +19,9 @@ This fork adds a SenseCAP Solar–focused combined Repeater + Room Server implem
 
 ## Verification status
 
-- **Passed:** native unit tests and all 15 firmware targets on PR head `2cc4dbbe5015c3f67d7c256294d3d3f813bdb040`; the missing GoogleTest entry point in the path-length suite is fixed.
-- **Requires fresh CI:** SafeRoomExtraFS now scans the reserved region and only formats it when every byte is erased; the new code is on the current branch head and its native/build workflows are running.
-- **Still required:** fault-injection/power-loss testing; real-device sleep, storage and radio tests; interoperability testing with official clients; Canadian ISED compliance verification.
+- **Passed:** native unit tests and all 16 firmware targets on code commit `b84d188954dc0e79a9c2a73628be834e754d33dc`, including SenseCAP Solar and ThinkNode M5 BLE companion.
+- **New code awaiting CI:** Room post appends now reopen the journal and verify the exact record after flush/close before acknowledging the client. This addresses the File API's void-returning flush/close operations; a fresh CI run is required.
+- **Still required:** automated storage fault-injection/power-loss testing; real-device sleep, storage and radio tests; interoperability testing with official clients; Canadian ISED compliance verification.
 - **Not done:** no device has been flashed and the pull request has not been merged.
 
 ## Hardware validation protocol
