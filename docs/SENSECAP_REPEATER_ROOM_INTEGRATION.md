@@ -106,17 +106,17 @@ Implemented on the feature branch:
 Storage source audit:
 - Adafruit InternalFS reserves seven 4 KiB pages (28,672 bytes).
 - MeshCore's nRF52 ExtraFS configuration reserves 0x19000 bytes (102,400 bytes) at 0xD4000, with 128-byte blocks.
-- CustomLFS uses LittleFS and automatically formats its configured region if mounting fails. The ExtraFS region is excluded from the application image by the alternate linker script.
+- The pinned CustomLFS 0.2.3 library normally erases/formats its entire region on any mount failure. The SenseCAP firmware now wraps it with SafeRoomExtraFS: mount first; if mounting fails, scan the entire 100 KiB region in 128-byte chunks; format only if every byte is erased (0xFF); if any existing data is present or a read fails, refuse to format and let the Repeater start without Room. The ExtraFS region is excluded from the application image by the alternate linker script.
 - The ExtraFS region is a reserved portion of the nRF52840 internal flash. It is not the separate 2 MB onboard flash listed in Seeed's board specification.
-- If ExtraFS fails to mount/format, the firmware starts as a Repeater only; the Room identity is not receive-active and Room storage is not touched. This isolates Room storage faults from core Repeater availability.
-- The ExtraFS configuration must be verified by the SenseCAP target build before flashing.
+- If ExtraFS is nonblank but fails to mount, or the blank-region scan/read fails, the firmware starts as a Repeater only; the Room identity is not receive-active and existing Room storage bytes are not intentionally erased. A completely blank first-use partition is formatted and mounted. This isolates Room storage faults from core Repeater availability.
+- The SafeRoomExtraFS wrapper must pass the SenseCAP target build and be verified on hardware with both a blank first-use partition and a deliberately unmountable nonblank test partition before deployment.
 
 ## Remaining implementation and verification
 
 - Repeat the full target matrix after any further firmware-code changes.
 - Verify the exact P1-Pro radio certification and Canadian ISED operating conditions. The 910.525 MHz / 62.5 kHz preset is a MeshCore network interoperability setting, not proof of regulatory compliance. RSS-247 Issue 4 specifies a 500 kHz minimum 6 dB bandwidth for its 902–928 MHz DTS route; the MeshCore preset is 62.5 kHz, so it cannot be assumed to qualify under that DTS clause. RSS-210 Annex B has a separate 902–928 MHz field-strength route. The Wio-SX1262 module datasheet identifies FCC ID Z4T-WIO-SX1262; its FCC grant lists 902.3–914.9 MHz and 0.092 W conducted output. That is US authorization, not Canadian ISED authorization. The P1-Pro product specification lists FCC/CE; no ISED identifier has yet been verified. Do not treat the 22 dBm hardware TX capability or this FCC grant as an approved Canadian operating power.
 - Confirm official Android/iOS clients can retain both identities from one physical device and validate Room discovery/login/post synchronization over the air.
-- Test power-loss recovery, full ExtraFS behavior, ACL persistence, and simultaneous Repeater/Room traffic.
+- Test SafeRoomExtraFS first-use formatting and nonblank mount-failure preservation, power-loss recovery, full ExtraFS behavior, ACL persistence, and simultaneous Repeater/Room traffic.
 - Back up existing device firmware/data and verify a documented recovery route before hardware flashing.
 
-Latest verified CI (2026-11-27): native unit tests passed on PR head `2cc4dbbe5015c3f67d7c256294d3d3f813bdb040`. The full matrix for that head was still in progress at the last status check (14 of 15 jobs complete successfully; one job still running). Hardware storage/power/radio testing, official-client interoperability and Canadian ISED compliance verification remain outstanding. No firmware has been flashed.
+Latest verified CI (2026-11-27): native unit tests and all 15 firmware targets passed on PR head `2cc4dbbe5015c3f67d7c256294d3d3f813bdb040`. The SafeRoomExtraFS data-preservation fix is on the newer head and requires a fresh CI run. Hardware storage/power/radio testing, official-client interoperability and Canadian ISED compliance verification remain outstanding. No firmware has been flashed.
