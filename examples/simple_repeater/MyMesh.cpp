@@ -1,5 +1,6 @@
 #include "MyMesh.h"
 #include "helpers/RoomSequence.h"
+#include "helpers/RoomJournalCore.h"
 #include <stddef.h>
 #include <algorithm>
 
@@ -736,36 +737,8 @@ bool MyMesh::onPeerPathRecvForIdentity(mesh::Packet* packet, const mesh::LocalId
 #define ROOM_JOURNAL_MAGIC 0x31505352UL  // "RSP1"
 #define ROOM_JOURNAL_VERSION 1
 
-struct __attribute__((packed)) RoomJournalHeader {
-  uint32_t magic;
-  uint16_t version;
-  uint16_t record_size;
-  uint32_t generation;
-  uint16_t base_count;
-  uint32_t base_checksum;
-  uint32_t checksum;
-};
-
-struct __attribute__((packed)) RoomJournalRecord {
-  uint32_t sequence;
-  uint32_t timestamp;
-  uint8_t author[PUB_KEY_SIZE];
-  uint16_t text_len;
-  char text[ROOM_MAX_POST_TEXT_LEN];
-  uint32_t checksum;
-};
-
-static uint32_t roomJournalHashUpdate(uint32_t hash, const uint8_t* data, size_t len) {
-  for (size_t i = 0; i < len; i++) {
-    hash ^= data[i];
-    hash *= 16777619UL;
-  }
-  return hash;
-}
-
-static uint32_t roomJournalHash(const uint8_t* data, size_t len) {
-  return roomJournalHashUpdate(2166136261UL, data, len);
-}
+using RoomJournalHeader = RoomJournalHeaderCore;
+using RoomJournalRecord = RoomJournalRecordCore<PUB_KEY_SIZE, ROOM_MAX_POST_TEXT_LEN>;
 
 static const char* roomJournalPath(uint8_t slot) {
   return slot == 0 ? "/room_posts.a" : "/room_posts.b";
@@ -886,14 +859,10 @@ bool MyMesh::verifyRoomPostFile(uint8_t slot, uint32_t* generation, bool load_po
   File file = openRoomJournalRead(_room_fs, roomJournalPath(slot));
   if (!file) return false;
   RoomJournalHeader header;
-  bool ok = file.read((uint8_t*)&header, sizeof(header)) == sizeof(header);
-  if (ok) {
-    ok = header.magic == ROOM_JOURNAL_MAGIC && header.version == ROOM_JOURNAL_VERSION &&
-         header.record_size == sizeof(RoomJournalRecord) &&
-         header.base_count <= ROOM_MAX_UNSYNCED_POSTS &&
-         header.checksum == roomJournalHash((const uint8_t*)&header, offsetof(RoomJournalHeader, checksum));
+  if (file.read((uint8_t*)&header, sizeof(header)) != sizeof(header)) {
+    file.close();
+    return false;
   }
-  if (!ok) { file.close(); return false; }
 
   if (load_posts) {
     memset(room_posts, 0, sizeof(room_posts));
@@ -904,17 +873,13 @@ bool MyMesh::verifyRoomPostFile(uint8_t slot, uint32_t* generation, bool load_po
     room_journal_needs_compact = false;
   }
 
-  uint32_t base_hash = 2166136261UL;
-  RoomSequenceTracker sequence_tracker;
-  for (uint16_t i = 0; i < header.base_count; i++) {
-    RoomJournalRecord record;
-    if (file.read((uint8_t*)&record, sizeof(record)) != sizeof(record) ||
-        !roomJournalRecordValid(record)) {
-      file.close();
-      return false;
-    }
-    base_hash = roomJournalHashUpdate(base_hash, (const uint8_t*)&record, sizeof(record));
-    if (load_posts) {
+  RoomJournalScanResult scan = roomJournalScan<RoomJournalHeader, RoomJournalRecord>(
+    header, file.size(), ROOM_JOURNAL_MAGIC, ROOM_JOURNAL_VERSION, ROOM_MAX_UNSYNCED_POSTS,
+    [&file](RoomJournalRecord& record) {
+      return file.read((uint8_t*)&record, sizeof(record)) == sizeof(record);
+    },
+    [this, load_posts](const RoomJournalRecord& record) {
+      if (!load_posts) return;
       RoomPostInfo& post = room_posts[room_next_post_idx];
       post.author = mesh::Identity(record.author);
       post.sequence = record.sequence;
@@ -923,30 +888,16 @@ bool MyMesh::verifyRoomPostFile(uint8_t slot, uint32_t* generation, bool load_po
       post.text[record.text_len] = 0;
       room_next_post_idx = (room_next_post_idx + 1) % ROOM_MAX_UNSYNCED_POSTS;
       if (room_post_count < ROOM_MAX_UNSYNCED_POSTS) room_post_count++;
-      sequence_tracker.observe(record.sequence);
-    }
+    });
+
+  if (!scan.valid) {
+    file.close();
+    return false;
   }
-  if (base_hash != header.base_checksum) { file.close(); return false; }
 
   if (load_posts) {
-    while (file.available()) {
-      RoomJournalRecord record;
-      if (file.read((uint8_t*)&record, sizeof(record)) != sizeof(record) ||
-          !roomJournalRecordValid(record)) {
-        room_journal_needs_compact = true;
-        break;
-      }
-      RoomPostInfo& post = room_posts[room_next_post_idx];
-      post.author = mesh::Identity(record.author);
-      post.sequence = record.sequence;
-      post.post_timestamp = record.timestamp;
-      memcpy(post.text, record.text, record.text_len);
-      post.text[record.text_len] = 0;
-      room_next_post_idx = (room_next_post_idx + 1) % ROOM_MAX_UNSYNCED_POSTS;
-      if (room_post_count < ROOM_MAX_UNSYNCED_POSTS) room_post_count++;
-      sequence_tracker.observe(record.sequence);
-    }
-    if (sequence_tracker.hasValue()) room_next_sequence = sequence_tracker.value();
+    room_journal_needs_compact = scan.needs_compact;
+    if (scan.has_sequence) room_next_sequence = scan.last_sequence;
     room_num_posted = (uint16_t)room_next_sequence;
     room_journal_size = file.size();
   }

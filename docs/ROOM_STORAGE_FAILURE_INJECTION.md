@@ -1,6 +1,6 @@
 # Room Storage Failure-Injection Plan
 
-Status: test design only. No hardware fault injection has been performed. The journal/ACL recovery claims below are source-level expectations and must not be treated as measured results.
+Status: partial host harness implemented for the shared Room journal record scanner. The host fake-file tests exercise valid-prefix recovery, every partial-record tail boundary, corrupt base/tail records, read failure and short append writes. The full filesystem-operation harness, compaction/slot-switch injection, ACL/identity/ExtraFS injection and hardware fault tests are still outstanding. No hardware fault injection has been performed.
 
 ## Scope
 
@@ -80,7 +80,7 @@ A test passes only when observed behavior matches the expected recovery and the 
 
 ## Execution order
 
-1. Implement host fake-filesystem tests and deterministic operation hooks.
+1. Extend the current host fake-file scanner tests into a complete fake-filesystem adapter with deterministic operation hooks around production journal writes, seeks, flushes, closes, removes and renames.
 2. Run every J/A/I/F case under native CI; include short writes at each byte boundary for fixed-size journal records and headers.
 3. Add randomized reset/failure sequences and run them repeatedly.
 4. Validate the same high-value checkpoints on a sacrificial SenseCAP with a controlled power switch.
@@ -89,6 +89,6 @@ A test passes only when observed behavior matches the expected recovery and the 
 ## Current known limitations
 
 - The current production code has read-back verification for new appended records and for compacted journal base records.
-- The current repository does not yet contain the fake filesystem/fault-hook harness described above.
+- The repository now contains a host fake-file test harness for the shared journal scanner. It does not yet inject failures into the production compaction/write/slot-switch operations, nor does it cover ACL, identity or ExtraFS.
 - The CI green status verifies compilation and existing unit tests; it does not validate the failure matrix.
 - Power-loss atomicity, flash-controller behavior, and LittleFS behavior under real supply collapse remain unverified.
