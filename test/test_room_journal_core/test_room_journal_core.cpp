@@ -5,6 +5,7 @@
 #include <map>
 #include <string>
 #include "helpers/RoomJournalCore.h"
+#include "helpers/AtomicSlotCore.h"
 
 static const uint32_t MAGIC = 0x31505352UL;
 static const uint16_t VERSION = 1;
@@ -182,12 +183,13 @@ public:
   std::string active_path;
   bool opened=false, append_mode=false;
   size_t cursor=0;
-  bool fail_open_read=false, fail_open_append=false, fail_read=false;
+  bool fail_open_read=false, fail_open_append=false, fail_open_write=false, fail_read=false;
   bool fail_seek=false, fail_flush=false, fail_close=false, fail_remove=false;
   int write_call=0, short_write_call=-1;
   size_t short_write_bytes=0;
   bool openRead(const char* path){if(fail_open_read||files.find(path)==files.end())return false;active_path=path;opened=true;append_mode=false;cursor=0;return true;}
   bool openAppend(const char* path){if(fail_open_append)return false;active_path=path;opened=true;append_mode=true;cursor=files[path].size();return true;}
+  bool openWrite(const char* path){if(fail_open_write)return false;active_path=path;opened=true;append_mode=false;cursor=0;files[path].clear();return true;}
   size_t read(uint8_t* data,size_t len){if(!opened||fail_read)return 0;auto& b=files[active_path];size_t n=std::min(len,b.size()>cursor?b.size()-cursor:0);if(n)memcpy(data,b.data()+cursor,n);cursor+=n;return n;}
   size_t write(const uint8_t* data,size_t len){if(!opened)return 0;write_call++;size_t n=len;if(write_call==short_write_call)n=std::min(n,short_write_bytes);auto& b=files[active_path];if(cursor+n>b.size())b.resize(cursor+n);if(n)memcpy(b.data()+cursor,data,n);cursor+=n;return n;}
   bool seek(uint32_t offset){if(!opened||fail_seek)return false;cursor=offset;return true;}
@@ -248,6 +250,74 @@ TEST(RoomJournalTransactions, AppendFailuresAreNotAcknowledged){
   }
 }
 
+
+struct TestACLHeader { uint32_t generation; uint16_t count; uint32_t checksum; };
+struct TestACLRecord { uint32_t id; uint32_t permissions; };
+static uint32_t testACLChecksum(const TestACLHeader& h) {
+  return roomJournalHash(reinterpret_cast<const uint8_t*>(&h), offsetof(TestACLHeader, checksum));
+}
+static bool verifyTestACL(FakeJournalStorage& s, const char* path,
+                          const TestACLHeader& expected, uint16_t count) {
+  if (!s.openRead(path)) return false;
+  TestACLHeader h={};
+  bool ok=s.read(reinterpret_cast<uint8_t*>(&h),sizeof(h))==sizeof(h) &&
+          h.generation==expected.generation && h.count==count &&
+          h.checksum==testACLChecksum(h);
+  for(uint16_t i=0;ok&&i<count;i++){
+    TestACLRecord r={};
+    ok=s.read(reinterpret_cast<uint8_t*>(&r),sizeof(r))==sizeof(r);
+  }
+  ok=ok && s.size()==sizeof(h)+count*sizeof(TestACLRecord);
+  bool closed=s.close();
+  return ok&&closed;
+}
+TEST(AtomicSlotTransactions, WritesAndVerifiesInactiveACLSlotBeforeCallerCanSwitch) {
+  FakeJournalStorage s;
+  s.files["acl.active"]={1,2,3};
+  TestACLHeader h={9,2,0};h.checksum=testACLChecksum(h);
+  TestACLRecord records[2]={{10,2},{11,3}};
+  EXPECT_TRUE(atomicSlotWriteVerified<FakeJournalStorage,TestACLHeader,TestACLRecord>(
+    s,"acl.next",h,2,[&](uint16_t i,TestACLRecord& out){if(i>=2)return false;out=records[i];return true;},
+    [&](const char* p,const TestACLHeader& e,uint16_t n){return verifyTestACL(s,p,e,n);}));
+  EXPECT_EQ((std::vector<uint8_t>{1,2,3}),s.files["acl.active"]);
+  EXPECT_EQ(sizeof(h)+2*sizeof(TestACLRecord),s.files["acl.next"].size());
+}
+TEST(AtomicSlotTransactions, AnyWriteOrVerificationFailureKeepsActiveACLSlotUntouched) {
+  TestACLHeader h={10,1,0};h.checksum=testACLChecksum(h);
+  TestACLRecord rec={12,3};
+  for(int failure=0;failure<8;failure++){
+    FakeJournalStorage s;s.files["acl.active"]={4,5,6};auto old=s.files["acl.active"];
+    if(failure==0)s.fail_remove=true;
+    if(failure==1)s.fail_open_write=true;
+    if(failure==2)s.short_write_call=1,s.short_write_bytes=sizeof(h)-1;
+    if(failure==3)s.short_write_call=2,s.short_write_bytes=sizeof(rec)-1;
+    if(failure==4)s.fail_flush=true;
+    if(failure==5)s.fail_close=true;
+    if(failure==6)s.fail_open_read=true;
+    if(failure==7)s.fail_read=true;
+    bool ok=atomicSlotWriteVerified<FakeJournalStorage,TestACLHeader,TestACLRecord>(
+      s,"acl.next",h,1,[&](uint16_t,TestACLRecord& out){out=rec;return true;},
+      [&](const char* p,const TestACLHeader& e,uint16_t n){return verifyTestACL(s,p,e,n);});
+    EXPECT_FALSE(ok)<<"failure="<<failure;
+    EXPECT_EQ(old,s.files["acl.active"])<<"failure="<<failure;
+  }
+}
+TEST(AtomicSlotTransactions, ShortWritesAtEveryACLHeaderAndRecordBoundaryAreRejected) {
+  TestACLHeader h={11,1,0};h.checksum=testACLChecksum(h);
+  TestACLRecord rec={13,2};
+  for(int call=1;call<=2;call++){
+    size_t length=call==1?sizeof(h):sizeof(rec);
+    for(size_t cut=0;cut<length;cut++){
+      FakeJournalStorage s;s.files["acl.active"]={7,8,9};auto old=s.files["acl.active"];
+      s.short_write_call=call;s.short_write_bytes=cut;
+      bool ok=atomicSlotWriteVerified<FakeJournalStorage,TestACLHeader,TestACLRecord>(
+        s,"acl.next",h,1,[&](uint16_t,TestACLRecord& out){out=rec;return true;},
+        [&](const char* p,const TestACLHeader& e,uint16_t n){return verifyTestACL(s,p,e,n);});
+      EXPECT_FALSE(ok)<<"call="<<call<<" cut="<<cut;
+      EXPECT_EQ(old,s.files["acl.active"]);
+    }
+  }
+}
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);

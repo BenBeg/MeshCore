@@ -1,4 +1,6 @@
 #include "ClientACL.h"
+#include "AtomicSlotCore.h"
+#include <new>
 #include <stddef.h>
 
 namespace {
@@ -76,6 +78,35 @@ static File openWrite(FILESYSTEM* _fs, const char* filename) {
     return _fs->open(filename, "w", true);
   #endif
 }
+
+
+class ACLFileStorage {
+  union Holder { File file; Holder() {} ~Holder() {} } holder;
+  FILESYSTEM* fs;
+  bool opened;
+  File* file() { return &holder.file; }
+public:
+  explicit ACLFileStorage(FILESYSTEM* filesystem) : fs(filesystem), opened(false) {}
+  ~ACLFileStorage() { close(); }
+  bool openWrite(const char* path) {
+    close();
+    new (&holder.file) File(::openWrite(fs, path));
+    opened = true;
+    if (!*file()) { close(); return false; }
+    return true;
+  }
+  size_t write(const uint8_t* data, size_t len) { return opened ? file()->write(data,len) : 0; }
+  bool flush() { if(!opened)return false; file()->flush(); return true; }
+  bool close() {
+    if(!opened)return true;
+    file()->close();
+    file()->~File();
+    opened=false;
+    return true; // File API has no close status; verified reopen follows.
+  }
+  bool exists(const char* path) { return fs->exists(path); }
+  bool remove(const char* path) { return fs->remove(path); }
+};
 
 void ClientACL::load(FILESYSTEM* fs, const mesh::LocalIdentity& self_id) {
   _fs = fs;
@@ -244,22 +275,25 @@ bool ClientACL::saveAtomic(FILESYSTEM* fs, bool (*filter)(ClientInfo*)) {
   header.payload_hash = payload_hash;
   header.header_hash = aclHashUpdate(2166136261UL, (const uint8_t*)&header, offsetof(ACLSlotHeader, header_hash));
 
-  File file = openWrite(fs, paths[target]);
-  if (!file) return false;
-  bool success = file.write((const uint8_t*)&header, sizeof(header)) == sizeof(header);
-  for (int i = 0; success && i < num_clients; i++) {
-    ClientInfo* client = &clients[i];
-    if (client->permissions == 0 || (filter && !filter(client))) continue;
-    encodeACLRecord(record, *client);
-    success = file.write(record, sizeof(record)) == sizeof(record);
-  }
-  file.flush();
-  file.close();
+  ACLFileStorage storage(fs);
+  int client_index = 0;
+  bool success = atomicSlotWriteVerified<ACLFileStorage, ACLSlotHeader, uint8_t[ACL_RECORD_SIZE]>(
+    storage, paths[target], header, count,
+    [&](uint16_t, uint8_t (&out)[ACL_RECORD_SIZE]) {
+      while (client_index < num_clients) {
+        ClientInfo* client = &clients[client_index++];
+        if (client->permissions == 0 || (filter && !filter(client))) continue;
+        encodeACLRecord(out, *client);
+        return true;
+      }
+      return false;
+    },
+    [&](const char* path, const ACLSlotHeader& expected, uint16_t expected_count) {
+      ACLSlotHeader verified;
+      return readACLSlot(fs, path, &verified) &&
+        verified.generation == expected.generation && verified.count == expected_count;
+    });
   if (!success) return false;
-
-  ACLSlotHeader verified;
-  if (!readACLSlot(fs, paths[target], &verified) ||
-      verified.generation != header.generation || verified.count != count) return false;
   _atomic_slot = target;
   _atomic_generation = header.generation;
   return true;
