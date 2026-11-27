@@ -395,6 +395,7 @@ mesh::Packet *MyMesh::createRoomAdvert() {
 }
 
 void MyMesh::sendRoomSelfAdvertisement(int delay_millis, bool flood) {
+  if (!room_service_enabled) return;
   mesh::Packet* pkt = createRoomAdvert();
   if (!pkt) return;
   if (flood) sendRoomFloodScoped(default_scope, pkt, delay_millis, _prefs.path_hash_mode + 1);
@@ -1341,7 +1342,8 @@ void MyMesh::onAckRecv(mesh::Packet* packet, uint32_t ack_crc) {
 }
 
 void MyMesh::roomLoop() {
-  if (room_dirty_contacts_expiry && millisHasNowPassed(room_dirty_contacts_expiry)) {
+  if (!room_service_enabled) return;
+  if (room_dirty_contacts_expiry && millisHasNowPassed(room_dirty_contacts_expiry))
     room_acl.save(_room_fs);
     room_dirty_contacts_expiry = 0;
   }
@@ -1577,7 +1579,7 @@ void MyMesh::onControlDataRecv(mesh::Packet* packet) {
       }
     }
 #if defined(ROOM_EXTRA_FS)
-    if ((filter & (1 << ADV_TYPE_ROOM)) != 0 && _prefs.discovery_mod_timestamp >= since) {
+    if (room_service_enabled && (filter & (1 << ADV_TYPE_ROOM)) != 0 && _prefs.discovery_mod_timestamp >= since) {
       bool prefix_only = packet->payload[0] & 1;
       uint8_t data[6 + PUB_KEY_SIZE];
       data[0] = CTL_TYPE_NODE_DISCOVER_RESP | ADV_TYPE_ROOM;
@@ -1653,6 +1655,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
       , bridge(&_prefs, _mgr, &rtc)
 #endif
 {
+  room_service_enabled = false;
   last_millis = 0;
   uptime_millis = 0;
   next_local_advert = next_flood_advert = 0;
@@ -1732,14 +1735,21 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
 void MyMesh::begin(FILESYSTEM *fs, FILESYSTEM *room_fs) {
   mesh::Mesh::begin();
   _fs = fs;
-  _room_fs = room_fs ? room_fs : fs;
+#if defined(ROOM_EXTRA_FS)
+  room_service_enabled = room_fs != NULL && room_fs != fs;
+#else
+  room_service_enabled = false;
+#endif
+  _room_fs = room_service_enabled ? room_fs : fs;
   // load persisted prefs
   _cli.loadPrefs(_fs);
   acl.load(_fs, self_id);
 #if defined(ROOM_EXTRA_FS)
-  room_acl.setStoragePath("/room_contacts");
-  room_acl.load(_room_fs, room_id);
-  loadRoomPosts();
+  if (room_service_enabled) {
+    room_acl.setStoragePath("/room_contacts");
+    room_acl.load(_room_fs, room_id);
+    loadRoomPosts();
+  }
 #endif
   // TODO: key_store.begin();
   region_map.load(_fs);
@@ -1848,7 +1858,7 @@ bool MyMesh::formatFileSystem() {
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
   bool ok = InternalFS.format();
 #if defined(ROOM_EXTRA_FS)
-  if (_room_fs) ok = _room_fs->format() && ok;
+  if (room_service_enabled && _room_fs) ok = _room_fs->format() && ok;
 #endif
   return ok;
 #elif defined(RP2040_PLATFORM)
@@ -1878,7 +1888,8 @@ void MyMesh::updateAdvertTimer() {
   if (_prefs.advert_interval > 0) {
     next_local_advert = futureMillis(((uint32_t)_prefs.advert_interval) * 2 * 60 * 1000);
 #if defined(ROOM_EXTRA_FS)
-    room_next_local_advert = futureMillis(((uint32_t)_prefs.advert_interval) * 2 * 60 * 1000 + 30000);
+    room_next_local_advert = room_service_enabled
+      ? futureMillis(((uint32_t)_prefs.advert_interval) * 2 * 60 * 1000 + 30000) : 0;
 #else
     room_next_local_advert = 0;
 #endif
@@ -1892,7 +1903,8 @@ void MyMesh::updateFloodAdvertTimer() {
   if (_prefs.flood_advert_interval > 0) {
     next_flood_advert = futureMillis(((uint32_t)_prefs.flood_advert_interval) * 60 * 60 * 1000);
 #if defined(ROOM_EXTRA_FS)
-    room_next_flood_advert = futureMillis(((uint32_t)_prefs.flood_advert_interval) * 60 * 60 * 1000 + 60000);
+    room_next_flood_advert = room_service_enabled
+      ? futureMillis(((uint32_t)_prefs.flood_advert_interval) * 60 * 60 * 1000 + 60000) : 0;
 #else
     room_next_flood_advert = 0;
 #endif
@@ -2160,7 +2172,7 @@ void MyMesh::loop() {
   }
 
 #if defined(ROOM_EXTRA_FS)
-  if (room_next_flood_advert && millisHasNowPassed(room_next_flood_advert)) {
+  if (room_service_enabled && room_next_flood_advert && millisHasNowPassed(room_next_flood_advert)) {
     mesh::Packet* pkt = createRoomAdvert();
     if (pkt) sendRoomFloodScoped(default_scope, pkt, 0, _prefs.path_hash_mode + 1);
     room_next_flood_advert = _prefs.flood_advert_interval > 0
@@ -2204,5 +2216,6 @@ bool MyMesh::hasPendingWork() const {
 #if defined(WITH_BRIDGE)
   if (bridge.isRunning()) return true;  // bridge needs WiFi radio, can't sleep
 #endif
-  return _mgr->getOutboundTotal() > 0 || room_next_push != 0 || room_dirty_contacts_expiry != 0;
+  return _mgr->getOutboundTotal() > 0 ||
+         (room_service_enabled && (room_next_push != 0 || room_dirty_contacts_expiry != 0));
 }
