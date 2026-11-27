@@ -1,6 +1,6 @@
 # Room Storage Failure-Injection Plan
 
-Status: the host harness now exercises the same shared journal append and compaction transaction functions used by firmware, through a deterministic fake filesystem. It covers operation ordering and injected failures at the transaction boundary. ACL/identity/ExtraFS injection and physical power-loss tests remain outstanding. No hardware fault injection has been performed.
+Status: the host harness exercises the same shared journal append and compaction transaction functions used by firmware, through a deterministic fake filesystem. It covers operation failures and short writes at every header/record write boundary. ACL/identity/ExtraFS injection and physical power-loss tests remain outstanding. No hardware fault injection has been performed.
 
 ## Scope
 
@@ -80,7 +80,7 @@ A test passes only when observed behavior matches the expected recovery and the 
 
 ## Execution order
 
-1. Extend the host fake filesystem to cover production journal transaction helpers and deterministic operation hooks around writes, seeks, flushes, closes and removes.
+1. Extend the current fake filesystem to cover additional slot-switch and active-slot retirement checkpoints around the shared production journal transactions.
 2. Run every J/A/I/F case under native CI; include short writes at each byte boundary for fixed-size journal records and headers.
 3. Add randomized reset/failure sequences and run them repeatedly.
 4. Validate the same high-value checkpoints on a sacrificial SenseCAP with a controlled power switch.
@@ -89,6 +89,6 @@ A test passes only when observed behavior matches the expected recovery and the 
 ## Current known limitations
 
 - The current production code has read-back verification for new appended records and for compacted journal base records.
-- The repository now shares append, compaction and slot verification transaction code between firmware and host tests. The fake filesystem can inject operation failures; hardware power-loss behavior and ACL, identity and ExtraFS fault matrices remain outstanding.
+- The repository now shares append, compaction and slot verification transaction code between firmware and host tests. The fake filesystem injects operation failures and short writes; active-slot switching, ACL, identity, ExtraFS and hardware power-loss fault matrices remain outstanding.
 - The CI green status verifies compilation and existing unit tests; it does not validate the failure matrix.
 - Power-loss atomicity, flash-controller behavior, and LittleFS behavior under real supply collapse remain unverified.
