@@ -873,6 +873,16 @@ void MyMesh::onControlDataRecv(mesh::Packet* packet) {
         sendZeroHop(resp, getRetransmitDelay(resp)*4);  // apply random delay (widened x4), as multiple nodes can respond to this
       }
     }
+    if ((filter & (1 << ADV_TYPE_ROOM)) != 0 && _prefs.discovery_mod_timestamp >= since) {
+      bool prefix_only = packet->payload[0] & 1;
+      uint8_t data[6 + PUB_KEY_SIZE];
+      data[0] = CTL_TYPE_NODE_DISCOVER_RESP | ADV_TYPE_ROOM;
+      data[1] = packet->_snr;
+      memcpy(&data[2], &tag, 4);
+      memcpy(&data[6], room_id.pub_key, PUB_KEY_SIZE);
+      auto resp = createControlData(data, prefix_only ? 6 + 8 : 6 + PUB_KEY_SIZE);
+      if (resp) sendZeroHop(resp, getRetransmitDelay(resp) * 4);
+    }
   } else if (type == CTL_TYPE_NODE_DISCOVER_RESP && packet->payload_len >= 6) {
     uint8_t node_type = packet->payload[0] & 0x0F;
     if (node_type != ADV_TYPE_REPEATER) {
