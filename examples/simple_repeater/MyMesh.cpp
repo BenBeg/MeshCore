@@ -2,6 +2,7 @@
 #include "helpers/RoomSequence.h"
 #include "helpers/RoomJournalCore.h"
 #include <stddef.h>
+#include <new>
 #include <algorithm>
 
 /* ------------------------------ Config -------------------------------- */
@@ -764,18 +765,44 @@ static File openRoomJournalAppend(FILESYSTEM* fs, const char* path) {
 
 // Single-handle adapter for the shared production journal transactions.
 class RoomJournalFileStorage {
+  union FileHolder {
+    File file;
+    FileHolder() {}
+    ~FileHolder() {}
+  } _holder;
   FILESYSTEM* _fs;
-  File _file;
+  bool _opened;
+
+  File* file() { return &_holder.file; }
 public:
-  explicit RoomJournalFileStorage(FILESYSTEM* fs) : _fs(fs) {}
-  bool openRead(const char* path) { _file = openRoomJournalRead(_fs, path); return (bool)_file; }
-  bool openAppend(const char* path) { _file = openRoomJournalAppend(_fs, path); return (bool)_file; }
-  size_t read(uint8_t* data, size_t len) { return _file.read(data, len); }
-  size_t write(const uint8_t* data, size_t len) { return _file.write(data, len); }
-  bool seek(uint32_t offset) { return _file.seek(offset); }
-  uint32_t size() { return (uint32_t)_file.size(); }
-  bool flush() { _file.flush(); return true; } // File API exposes no status.
-  bool close() { _file.close(); return true; } // Verify by reopening instead.
+  explicit RoomJournalFileStorage(FILESYSTEM* fs) : _fs(fs), _opened(false) {}
+  ~RoomJournalFileStorage() { close(); }
+  bool openRead(const char* path) {
+    close();
+    new (&_holder.file) File(openRoomJournalRead(_fs, path));
+    _opened = true;
+    if (!*file()) { close(); return false; }
+    return true;
+  }
+  bool openAppend(const char* path) {
+    close();
+    new (&_holder.file) File(openRoomJournalAppend(_fs, path));
+    _opened = true;
+    if (!*file()) { close(); return false; }
+    return true;
+  }
+  size_t read(uint8_t* data, size_t len) { return file()->read(data, len); }
+  size_t write(const uint8_t* data, size_t len) { return file()->write(data, len); }
+  bool seek(uint32_t offset) { return file()->seek(offset); }
+  uint32_t size() { return (uint32_t)file()->size(); }
+  bool flush() { file()->flush(); return true; } // File API exposes no status.
+  bool close() {
+    if (!_opened) return true;
+    file()->close();
+    file()->~File();
+    _opened = false;
+    return true; // Verify writes by reopening; File API exposes no close status.
+  }
   bool exists(const char* path) { return _fs->exists(path); }
   bool remove(const char* path) { return _fs->remove(path); }
 };
