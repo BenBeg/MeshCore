@@ -1,6 +1,6 @@
 # Room Storage Failure-Injection Plan
 
-Status: the host harness exercises the same shared journal append and compaction transaction functions used by firmware, through a deterministic fake filesystem. It covers operation failures and short writes at every header/record write boundary. ACL/identity/ExtraFS injection and physical power-loss tests remain outstanding. No hardware fault injection has been performed.
+Status: the host harness exercises the same shared Room journal append/compaction transactions and atomic ACL inactive-slot write transaction used by firmware, through a deterministic fake filesystem. Journal tests cover operation failures and short writes at every header/record write boundary. ACL transaction tests cover inactive-slot removal/open, short header/record writes, flush, close and read-back failures while asserting that the active ACL slot is unchanged. ACL load/migration/clear, identity/ExtraFS transaction injection and physical power-loss tests remain outstanding. No hardware fault injection has been performed.
 
 ## Scope
 
@@ -51,6 +51,7 @@ A host-side fake filesystem is preferred for deterministic tests. Hardware power
 | A02 | Corrupt newest ACL slot checksum | Fall back to previous valid slot |
 | A03 | Interrupt empty-generation ACL clear | Never resurrect revoked contacts from an older slot once the empty generation was committed |
 | A04 | Fail ACL read-back | Do not report save success; retry according to service policy |
+| A05 | Fail inactive-slot remove/open, header/record write, flush, close or verification read during save | Keep active slot/generation unchanged; report save failure |
 | I01 | Existing identity file unreadable/corrupt | Preserve file; do not silently generate a replacement identity |
 | I02 | First-time identity write interrupted | Do not activate identity unless write/read-back verification succeeds |
 | I03 | Existing valid identity | Reboot retains exactly the same public identity |
@@ -80,15 +81,16 @@ A test passes only when observed behavior matches the expected recovery and the 
 
 ## Execution order
 
-1. Extend the current fake filesystem to cover additional slot-switch and active-slot retirement checkpoints around the shared production journal transactions.
-2. Run every J/A/I/F case under native CI; include short writes at each byte boundary for fixed-size journal records and headers.
-3. Add randomized reset/failure sequences and run them repeatedly.
-4. Validate the same high-value checkpoints on a sacrificial SenseCAP with a controlled power switch.
-5. Only after those pass, perform the three-device interoperability protocol.
+1. Extend the fake filesystem to cover ACL slot selection, legacy migration, empty-generation clear and old-slot retirement using production-shared transaction code.
+2. Add production-shared identity write/read-back tests and SafeRoomExtraFS blank/nonblank mount tests.
+3. Run every automated J/A/I/F case under native CI; include short writes at each byte boundary for fixed-size journal/ACL records and headers.
+4. Add randomized reset/failure sequences and run them repeatedly.
+5. Validate the same high-value checkpoints on a sacrificial SenseCAP with a controlled power switch.
+6. Only after those pass, perform the three-device interoperability protocol.
 
 ## Current known limitations
 
 - The current production code has read-back verification for new appended records and for compacted journal base records.
-- The repository now shares append, compaction and slot verification transaction code between firmware and host tests. The fake filesystem injects operation failures and short writes; active-slot switching, ACL, identity, ExtraFS and hardware power-loss fault matrices remain outstanding.
+- The repository now shares journal append, compaction, slot verification and ACL inactive-slot write transaction code between firmware and host tests. The fake filesystem injects operation failures and short writes; ACL load/migration/clear and slot retirement, identity, ExtraFS and hardware power-loss fault matrices remain outstanding.
 - The CI green status verifies compilation and existing unit tests; it does not validate the failure matrix.
 - Power-loss atomicity, flash-controller behavior, and LittleFS behavior under real supply collapse remain unverified.
