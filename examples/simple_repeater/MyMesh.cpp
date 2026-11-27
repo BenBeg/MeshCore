@@ -850,6 +850,22 @@ bool MyMesh::roomStorePost(const mesh::Identity& author, const char* text) {
   bool success = roomJournalWriteRecord(file, post);
   if (success) file.flush();
   file.close();
+  if (success) {
+    // A successful write count plus flush is not enough on this File API:
+    // flush() and close() do not report sync errors. Reopen the journal and
+    // verify the exact final record before acknowledging the post to a client.
+    File verify = openRoomJournalRead(_room_fs, roomJournalPath(room_journal_slot));
+    RoomJournalRecord stored = {};
+    if (!verify || verify.size() < sizeof(RoomJournalRecord) ||
+        !verify.seek(verify.size() - sizeof(RoomJournalRecord)) ||
+        verify.read((uint8_t*)&stored, sizeof(stored)) != sizeof(stored) ||
+        !roomJournalRecordValid(stored) || stored.sequence != post.sequence ||
+        stored.timestamp != post.post_timestamp ||
+        memcmp(stored.author, post.author.pub_key, PUB_KEY_SIZE) != 0) {
+      success = false;
+    }
+    if (verify) verify.close();
+  }
   if (!success) {
     room_next_sequence--;
     room_journal_needs_compact = true;
