@@ -169,6 +169,9 @@ protected:
   mesh::DispatcherAction onRecvPacket(mesh::Packet* pkt) override;
 
   void onAnonDataRecv(mesh::Packet* packet, const uint8_t* secret, const mesh::Identity& sender, uint8_t* data, size_t len) override;
+  void onAnonDataRecvForIdentity(mesh::Packet* packet, const mesh::LocalIdentity& local_id, const uint8_t* secret, const mesh::Identity& sender, uint8_t* data, size_t len) override;
+  void onPeerDataRecvForIdentity(mesh::Packet* packet, const mesh::LocalIdentity& local_id, uint8_t type, int sender_idx, const uint8_t* secret, uint8_t* data, size_t len) override;
+  bool onPeerPathRecvForIdentity(mesh::Packet* packet, const mesh::LocalIdentity& local_id, int sender_idx, const uint8_t* secret, uint8_t* path, uint8_t path_len, uint8_t extra_type, uint8_t* extra, uint8_t extra_len) override;
   int searchPeersByHash(const uint8_t* hash) override;
   void getPeerSharedSecret(uint8_t* dest_secret, int peer_idx) override;
   int searchPeersByHashForIdentity(const mesh::LocalIdentity& local_id, const uint8_t* hash) override;
