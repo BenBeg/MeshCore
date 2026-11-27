@@ -20,7 +20,8 @@ This fork adds a SenseCAP Solar–focused combined Repeater + Room Server implem
 ## Verification status
 
 - **Passed:** native unit tests on `4d4b360fcf886b2a7095418d4757c5d5b531c084`; complete 15-target firmware matrix on `53c4440244ae2e9af6f2a0a08769a6d71643e4a7`.
-- **Queued:** complete 15-target firmware matrix for latest commit `4d4b360fcf886b2a7095418d4757c5d5b531c084`.
+- **Passed:** complete 15-target firmware matrix on PR head `03b4b1a1af35b3def65815fd14eee6146e370e70`.
+- **Needs correction:** native unit test target `test_packet_path_len` currently fails at link time because the new test file lacks the GoogleTest `main()` entry point; 54 other test cases passed.
 - **Still required:** fault-injection/power-loss testing; real-device sleep, storage and radio tests; interoperability testing with official clients; Canadian ISED compliance verification.
 - **Not done:** no device has been flashed and the pull request has not been merged.
 

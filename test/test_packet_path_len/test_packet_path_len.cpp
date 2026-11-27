@@ -18,3 +18,8 @@ TEST(PacketPathLength, RejectsReservedFourByteHashEncoding) {
     EXPECT_FALSE(Packet::isValidPathLen(0xC0));
     EXPECT_FALSE(Packet::isValidPathLen(0xFF));
 }
+
+int main(int argc, char **argv) {
+    ::testing::InitGoogleTest(&argc, argv);
+    return RUN_ALL_TESTS();
+}

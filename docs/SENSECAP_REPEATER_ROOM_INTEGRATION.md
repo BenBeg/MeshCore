@@ -1,6 +1,6 @@
 # SenseCAP Solar Repeater + Room Server Integration
 
-Status: implementation in progress. Native unit tests passed on commit 4d4b360fcf886b2a7095418d4757c5d5b531c084; the full 15-target matrix passed on its parent code commit 53c4440244ae2e9af6f2a0a08769a6d71643e4a7. The latest full matrix is queued; hardware validation remains outstanding.
+Status: implementation in progress. The full 15-target firmware matrix passed on PR head `03b4b1a1af35b3def65815fd14eee6146e370e70`, including the SenseCAP Solar target. Native tests currently have one test-target link failure: the new path-length test file is missing its GoogleTest `main()` entry point; the other 54 test cases passed. Hardware validation remains outstanding.
 
 Target branch: `feature/sensecap-repeater-room`
 Target PlatformIO environment: `SenseCap_Solar_repeater`
