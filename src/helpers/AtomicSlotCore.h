@@ -23,3 +23,17 @@ bool atomicSlotWriteVerified(Storage& storage, const char* path,
   if (!success || !flushed || !closed) return false;
   return verify(path, header, count);
 }
+
+
+// Commit an empty generation before retiring old ACL snapshots. If the
+// empty generation commits but cleanup fails, it remains authoritative.
+template <typename Storage, typename CommitEmpty, typename ClearMemory>
+bool atomicSlotClearVerified(Storage& storage, const char* stale_path,
+    const char* legacy_path, CommitEmpty commit_empty, ClearMemory clear_memory) {
+  if (!commit_empty()) return false;
+  clear_memory();
+  bool success = true;
+  if (storage.exists(stale_path) && !storage.remove(stale_path)) success = false;
+  if (storage.exists(legacy_path) && !storage.remove(legacy_path)) success = false;
+  return success;
+}

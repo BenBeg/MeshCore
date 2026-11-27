@@ -319,6 +319,32 @@ TEST(AtomicSlotTransactions, ShortWritesAtEveryACLHeaderAndRecordBoundaryAreReje
   }
 }
 
+TEST(AtomicSlotTransactions, ACLClearCommitsEmptyGenerationBeforeRetiringOldFiles) {
+  FakeJournalStorage s;
+  s.files["acl.0"]={1,2,3};s.files["legacy"]={4,5,6};
+  bool empty_committed=false, memory_cleared=false;
+  EXPECT_TRUE(atomicSlotClearVerified(s,"acl.0","legacy",
+    [&](){s.files["acl.1"]={0,0,0};empty_committed=true;return true;},
+    [&](){memory_cleared=true;}));
+  EXPECT_TRUE(empty_committed);EXPECT_TRUE(memory_cleared);
+  EXPECT_TRUE(s.exists("acl.1"));EXPECT_FALSE(s.exists("acl.0"));EXPECT_FALSE(s.exists("legacy"));
+}
+TEST(AtomicSlotTransactions, ACLClearDoesNotRetireOldFilesIfEmptyGenerationCannotCommit) {
+  FakeJournalStorage s;s.files["acl.0"]={1};s.files["legacy"]={2};
+  bool memory_cleared=false;
+  EXPECT_FALSE(atomicSlotClearVerified(s,"acl.0","legacy",
+    [](){return false;},[&](){memory_cleared=true;}));
+  EXPECT_FALSE(memory_cleared);EXPECT_TRUE(s.exists("acl.0"));EXPECT_TRUE(s.exists("legacy"));
+}
+TEST(AtomicSlotTransactions, ACLClearCleanupFailureLeavesCommittedEmptyGeneration) {
+  FakeJournalStorage s;s.files["acl.0"]={1};s.files["legacy"]={2};s.fail_remove=true;
+  bool memory_cleared=false;
+  EXPECT_FALSE(atomicSlotClearVerified(s,"acl.0","legacy",
+    [&](){s.files["acl.1"]={0};return true;},[&](){memory_cleared=true;}));
+  EXPECT_TRUE(memory_cleared);EXPECT_TRUE(s.exists("acl.1"));
+  EXPECT_TRUE(s.exists("acl.0"));EXPECT_TRUE(s.exists("legacy"));
+}
+
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

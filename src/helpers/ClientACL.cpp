@@ -308,20 +308,20 @@ bool ClientACL::clear() {
     // the old complete ACL or this newer empty ACL; it never revives an older
     // contact snapshot after a completed clear.
     int previous_count = num_clients;
-    num_clients = 0;
-    if (!saveAtomic(_fs)) {
-      num_clients = previous_count;
-      return false;
-    }
-
-    memset(clients, 0, sizeof(clients));
-    char stale_path[48];
-    snprintf(stale_path, sizeof(stale_path), "%s.%d", _storage_path, 1 - _atomic_slot);
-    bool success = true;
-    if (_fs->exists(stale_path) && !_fs->remove(stale_path)) success = false;
-    // Atomic slots are authoritative; removing a legacy file is cleanup only.
-    if (_fs->exists(_storage_path) && !_fs->remove(_storage_path)) success = false;
-    return success;
+    char stale_path[48] = {0};
+    ACLFileStorage storage(_fs);
+    // The empty generation must verify before RAM state or old snapshots are retired.
+    return atomicSlotClearVerified(storage, stale_path, _storage_path,
+      [&]() {
+        num_clients = 0;
+        if (!saveAtomic(_fs)) {
+          num_clients = previous_count;
+          return false;
+        }
+        snprintf(stale_path, sizeof(stale_path), "%s.%d", _storage_path, 1 - _atomic_slot);
+        return true;
+      },
+      [&]() { memset(clients, 0, sizeof(clients)); });
   }
 
   // Preserve the original single-file Repeater ACL behavior.
