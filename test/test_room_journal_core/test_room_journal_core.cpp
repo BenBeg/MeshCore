@@ -276,9 +276,9 @@ TEST(AtomicSlotTransactions, WritesAndVerifiesInactiveACLSlotBeforeCallerCanSwit
   s.files["acl.active"]={1,2,3};
   TestACLHeader h={9,2,0};h.checksum=testACLChecksum(h);
   TestACLRecord records[2]={{10,2},{11,3}};
-  EXPECT_TRUE(atomicSlotWriteVerified<FakeJournalStorage,TestACLHeader,TestACLRecord>(
+  EXPECT_TRUE((atomicSlotWriteVerified<FakeJournalStorage,TestACLHeader,TestACLRecord>(
     s,"acl.next",h,2,[&](uint16_t i,TestACLRecord& out){if(i>=2)return false;out=records[i];return true;},
-    [&](const char* p,const TestACLHeader& e,uint16_t n){return verifyTestACL(s,p,e,n);}));
+    [&](const char* p,const TestACLHeader& e,uint16_t n){return verifyTestACL(s,p,e,n);})));
   EXPECT_EQ((std::vector<uint8_t>{1,2,3}),s.files["acl.active"]);
   EXPECT_EQ(sizeof(h)+2*sizeof(TestACLRecord),s.files["acl.next"].size());
 }
