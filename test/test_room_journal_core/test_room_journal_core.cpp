@@ -286,7 +286,7 @@ TEST(AtomicSlotTransactions, AnyWriteOrVerificationFailureKeepsActiveACLSlotUnto
   TestACLHeader h={10,1,0};h.checksum=testACLChecksum(h);
   TestACLRecord rec={12,3};
   for(int failure=0;failure<8;failure++){
-    FakeJournalStorage s;s.files["acl.active"]={4,5,6};auto old=s.files["acl.active"];
+    FakeJournalStorage s;s.files["acl.active"]={4,5,6};s.files["acl.next"]={0xAA};auto old=s.files["acl.active"];
     if(failure==0)s.fail_remove=true;
     if(failure==1)s.fail_open_write=true;
     if(failure==2)s.short_write_call=1,s.short_write_bytes=sizeof(h)-1;
@@ -308,7 +308,7 @@ TEST(AtomicSlotTransactions, ShortWritesAtEveryACLHeaderAndRecordBoundaryAreReje
   for(int call=1;call<=2;call++){
     size_t length=call==1?sizeof(h):sizeof(rec);
     for(size_t cut=0;cut<length;cut++){
-      FakeJournalStorage s;s.files["acl.active"]={7,8,9};auto old=s.files["acl.active"];
+      FakeJournalStorage s;s.files["acl.active"]={7,8,9};s.files["acl.next"]={0xBB};auto old=s.files["acl.active"];
       s.short_write_call=call;s.short_write_bytes=cut;
       bool ok=atomicSlotWriteVerified<FakeJournalStorage,TestACLHeader,TestACLRecord>(
         s,"acl.next",h,1,[&](uint16_t,TestACLRecord& out){out=rec;return true;},
