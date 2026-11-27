@@ -41,6 +41,7 @@ A host-side fake filesystem is preferred for deterministic tests. Hardware power
 | J14 | Both slots invalid | Start Room with an empty journal only after recording that prior Room posts were unrecoverable; Repeater must remain operational |
 | J15 | Fill journal to compaction threshold / filesystem full | Refuse new post without ACK; existing journal remains readable |
 | J16 | Generation rollover from 0xFFFFFFFF to 0 | Select generation 0 as newer than 0xFFFFFFFF |
+| J17 | Post sequence rollover from 0xFFFFFFFF to 0, including a journal whose first retained record is above 0x7FFFFFFF | Recover the latest sequence using wrap-safe serial arithmetic and initialize from the first retained record; next post must not reuse a sequence |
 
 ## ACL and identity matrix
 
