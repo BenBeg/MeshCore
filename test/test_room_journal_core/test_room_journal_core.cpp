@@ -115,6 +115,18 @@ TEST(RoomJournalCore, RejectsCorruptBaseAndPreservesNoFalseSuccess) {
   EXPECT_FALSE(result.valid);
 }
 
+TEST(RoomJournalCore, RejectsBaseAggregateChecksumMismatch) {
+  auto file = makeJournal({makeRecord(55, "base")});
+  Header h = file.header();
+  h.base_checksum ^= 0x100;
+  h.checksum = roomJournalHash(reinterpret_cast<const uint8_t*>(&h), offsetof(Header, checksum));
+  file.writeHeader(h);
+  file.cursor = sizeof(Header);
+  std::vector<uint32_t> seq;
+  auto result = scan(file, seq);
+  EXPECT_FALSE(result.valid);
+}
+
 TEST(RoomJournalCore, CorruptTailKeepsBaseAndRequestsCompaction) {
   auto file = makeJournal({makeRecord(60, "base")}, {makeRecord(61, "tail")});
   file.bytes.back() ^= 0x01;
@@ -146,7 +158,7 @@ TEST(RoomJournalCore, ShortWriteNeverCreatesAValidCompleteTailRecord) {
     std::vector<uint32_t> seq;
     auto result = scan(file, seq);
     EXPECT_TRUE(result.valid) << "written=" << written;
-    EXPECT_TRUE(result.needs_compact) << "written=" << written;
+    EXPECT_EQ(written != 0, result.needs_compact) << "written=" << written;
     EXPECT_EQ(1U, result.valid_records) << "written=" << written;
   }
 }
