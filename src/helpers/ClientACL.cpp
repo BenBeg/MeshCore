@@ -55,7 +55,7 @@ static bool readACLSlot(FILESYSTEM* fs, const char* path, ACLSlotHeader* header)
     if (ok) {
       // Reject persisted path lengths that could make later path copies unsafe.
       uint8_t path_len = record[39];
-      if (path_len != OUT_PATH_UNKNOWN && path_len > MAX_PATH_SIZE) ok = false;
+      if (path_len != OUT_PATH_UNKNOWN && !mesh::Packet::isValidPathLen(path_len)) ok = false;
       if (ok) hash = aclHashUpdate(hash, record, sizeof(record));
     }
   }
