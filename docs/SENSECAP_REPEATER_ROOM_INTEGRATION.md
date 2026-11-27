@@ -1,6 +1,6 @@
 # SenseCAP Solar Repeater + Room Server Integration
 
-Status: implementation in progress. The current SenseCAP Solar target build and native unit tests pass on the latest feature-branch commit; full target-matrix and hardware validation remain outstanding.
+Status: implementation in progress. The SenseCAP Solar target build and native unit tests passed on commit 07aceda162d133803044e0962bf8af0b6e4844de; the full target-matrix and hardware validation remain outstanding.
 
 Target branch: `feature/sensecap-repeater-room`
 Target PlatformIO environment: `SenseCap_Solar_repeater`
@@ -114,4 +114,4 @@ Storage source audit:
 - Test power-loss recovery, full ExtraFS behavior, ACL persistence, and simultaneous Repeater/Room traffic.
 - Back up existing device firmware/data and verify a documented recovery route before hardware flashing.
 
-Latest targeted CI verification (2026-11-27): SenseCap_Solar_repeater build passed and native unit tests passed on commit c65783cbe888ac1472aa29ec2192a4bbf08541f4. The full target matrix and all hardware/over-the-air validation remain outstanding. No firmware has been flashed.
+Latest targeted CI verification (2026-11-27): SenseCap_Solar_repeater build and native unit tests passed on commit 07aceda162d133803044e0962bf8af0b6e4844de. The full target matrix and all hardware/over-the-air validation remain outstanding. No firmware has been flashed.

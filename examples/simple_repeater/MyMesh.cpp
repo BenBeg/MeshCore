@@ -1115,10 +1115,7 @@ void MyMesh::onRoomAnonDataRecv(mesh::Packet* packet, const uint8_t* secret,
     memcpy(client->shared_secret, secret, PUB_KEY_SIZE);
     room_dirty_contacts_expiry = futureMillis(5000);
   }
-  if (packet->isRouteFlood() && client->out_path_len != OUT_PATH_UNKNOWN) {
-    client->out_path_len = OUT_PATH_UNKNOWN;
-    room_dirty_contacts_expiry = futureMillis(5000);
-  }
+  if (packet->isRouteFlood()) client->out_path_len = OUT_PATH_UNKNOWN;
 
   uint32_t now = getRTCClock()->getCurrentTimeUnique();
   memcpy(reply_data, &now, 4);
@@ -1337,11 +1334,7 @@ bool MyMesh::onRoomPeerPathRecv(mesh::Packet* packet, int sender_idx, const uint
   int i = room_matching_peer_indexes[sender_idx];
   if (i < 0 || i >= room_acl.getNumClients()) return false;
   ClientInfo* client = room_acl.getClientByIdx(i);
-  uint8_t path_bytes = (path_len & 63) * ((path_len >> 6) + 1);
-  if (client->out_path_len != path_len || memcmp(client->out_path, path, path_bytes) != 0) {
-    client->out_path_len = mesh::Packet::copyPath(client->out_path, path, path_len);
-    room_dirty_contacts_expiry = futureMillis(5000);
-  }
+  client->out_path_len = mesh::Packet::copyPath(client->out_path, path, path_len);
   client->last_activity = getRTCClock()->getCurrentTime();
   room_next_push = futureMillis(100);
   if (extra_type == PAYLOAD_TYPE_ACK && extra_len >= 4) processRoomAck(extra);
