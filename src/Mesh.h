@@ -234,11 +234,14 @@ public:
    * \param transport_codes   array of 2 codes to attach to packet
   */
   void sendFlood(Packet* packet, uint16_t* transport_codes, uint32_t delay_millis=0, uint8_t path_hash_size=1);
+  void sendFloodPriority(Packet* packet, uint32_t delay_millis, uint8_t path_hash_size, uint8_t priority);
+  void sendFloodPriority(Packet* packet, uint16_t* transport_codes, uint32_t delay_millis, uint8_t path_hash_size, uint8_t priority);
 
   /**
    * \brief  send a locally-generated Packet with Direct routing
   */
   void sendDirect(Packet* packet, const uint8_t* path, uint8_t path_len, uint32_t delay_millis=0);
+  void sendDirectPriority(Packet* packet, const uint8_t* path, uint8_t path_len, uint32_t delay_millis, uint8_t priority);
 
   /**
    * \brief  send a locally-generated Packet to just neighbor nodes (zero hops)
@@ -250,6 +253,8 @@ public:
    * \param transport_codes   array of 2 codes to attach to packet
   */
   void sendZeroHop(Packet* packet, uint16_t* transport_codes, uint32_t delay_millis=0);
+  void sendZeroHopPriority(Packet* packet, uint32_t delay_millis, uint8_t priority);
+  void sendZeroHopPriority(Packet* packet, uint16_t* transport_codes, uint32_t delay_millis, uint8_t priority);
 
 };
 
