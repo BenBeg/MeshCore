@@ -1201,6 +1201,10 @@ void MyMesh::onRoomPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender_i
     if (flags != TXT_TYPE_PLAIN && flags != TXT_TYPE_CLI_DATA && flags != TXT_TYPE_CLI_COMMAND) return;
     if (timestamp < client->last_timestamp) return;
     bool retry = timestamp == client->last_timestamp;
+    if (flags == TXT_TYPE_PLAIN && (client->permissions & PERM_ACL_ROLE_MASK) != PERM_ACL_GUEST &&
+        !retry && !roomAddPost(client, (const char*)&data[5])) {
+      return; // Do not ACK a post that was not committed to persistent storage.
+    }
     client->last_timestamp = timestamp;
     uint32_t now = getRTCClock()->getCurrentTimeUnique();
     client->last_activity = now;
@@ -1219,7 +1223,6 @@ void MyMesh::onRoomPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender_i
         }
       }
     } else if ((client->permissions & PERM_ACL_ROLE_MASK) != PERM_ACL_GUEST) {
-      if (!retry) roomAddPost(client, (const char*)&data[5]);
       send_ack = true;
     }
     uint32_t delay = 0;
