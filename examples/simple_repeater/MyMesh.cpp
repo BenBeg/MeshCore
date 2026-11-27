@@ -1077,7 +1077,7 @@ void MyMesh::onRoomAnonDataRecv(mesh::Packet* packet, const uint8_t* secret,
     else return;
 
     client = room_acl.putClient(sender, 0);
-    if (timestamp <= client->last_timestamp) return;
+    if (!client || timestamp <= client->last_timestamp) return;
     client->last_timestamp = timestamp;
     client->extra.room.sync_since = sync_since;
     client->extra.room.pending_ack = 0;
