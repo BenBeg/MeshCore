@@ -19,10 +19,13 @@ This fork adds a SenseCAP Solar–focused combined Repeater + Room Server implem
 
 ## Verification status
 
-- **Passed:** native unit tests on `4d4b360fcf886b2a7095418d4757c5d5b531c084`; complete 15-target firmware matrix on `53c4440244ae2e9af6f2a0a08769a6d71643e4a7`.
-- **Passed:** complete 15-target firmware matrix on PR head `03b4b1a1af35b3def65815fd14eee6146e370e70`.
-- **Needs correction:** native unit test target `test_packet_path_len` currently fails at link time because the new test file lacks the GoogleTest `main()` entry point; 54 other test cases passed.
+- **Passed:** native unit tests on PR head `2cc4dbbe5015c3f67d7c256294d3d3f813bdb040`; the missing GoogleTest entry point in the path-length suite is fixed.
+- **In progress at last check:** the 15-target firmware matrix on `2cc4dbbe5015c3f67d7c256294d3d3f813bdb040`; 14 of 15 jobs had completed successfully and one job was still running.
 - **Still required:** fault-injection/power-loss testing; real-device sleep, storage and radio tests; interoperability testing with official clients; Canadian ISED compliance verification.
 - **Not done:** no device has been flashed and the pull request has not been merged.
 
-See [the integration design and verification notes](./docs/SENSECAP_REPEATER_ROOM_INTEGRATION.md) for architecture and remaining checks.
+## Hardware validation protocol
+
+[THREE_DEVICE_LAB_PROTOCOL.md](./docs/THREE_DEVICE_LAB_PROTOCOL.md) defines the three-device stock-versus-combined lab using the SenseCAP P1-Pro and two unmodified MeshCore ThinkNode M5 clients. It includes device roles, RF compliance gate, bench setup, serial/app evidence capture, expected behavior, relay negative control, reboot/persistence tests and a pass/fail scorecard.
+
+See [the integration design and verification notes](./docs/SENSECAP_REPEATER_ROOM_INTEGRATION.md) for architecture and remaining checks, and [the Three-Device Lab Protocol](./docs/THREE_DEVICE_LAB_PROTOCOL.md) for the practical hardware validation plan.
