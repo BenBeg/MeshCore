@@ -84,6 +84,19 @@ protected:
    */
   virtual void getPeerSharedSecret(uint8_t* dest_secret, int peer_idx) { }
 
+  // Identity-aware dispatch hooks. Existing single-identity Mesh applications
+  // retain their current behavior through these default implementations.
+  virtual int getLocalIdentityCount() const { return 1; }
+  virtual LocalIdentity* getLocalIdentity(int idx) { return idx == 0 ? &self_id : NULL; }
+  virtual int searchPeersByHashForIdentity(const LocalIdentity& local_id, const uint8_t* hash) {
+    (void)local_id;
+    return searchPeersByHash(hash);
+  }
+  virtual void getPeerSharedSecretForIdentity(const LocalIdentity& local_id, uint8_t* dest_secret, int peer_idx) {
+    (void)local_id;
+    getPeerSharedSecret(dest_secret, peer_idx);
+  }
+
   /**
    * \brief  A (now decrypted) data packet has been received (by a known peer).
    *         NOTE: these can be received multiple times (per sender/msg-id), via different routes
@@ -93,6 +106,10 @@ protected:
    * \param  data   decrypted data from payload
   */
   virtual void onPeerDataRecv(Packet* packet, uint8_t type, int sender_idx, const uint8_t* secret, uint8_t* data, size_t len) { }
+  virtual void onPeerDataRecvForIdentity(Packet* packet, const LocalIdentity& local_id, uint8_t type, int sender_idx, const uint8_t* secret, uint8_t* data, size_t len) {
+    (void)local_id;
+    onPeerDataRecv(packet, type, sender_idx, secret, data, len);
+  }
 
   /**
    * \brief  A TRACE packet has been received. (and has reached the end of its given path)
@@ -114,6 +131,10 @@ protected:
    * \returns   true, if path was accepted and that reciprocal path should be sent
   */
   virtual bool onPeerPathRecv(Packet* packet, int sender_idx, const uint8_t* secret, uint8_t* path, uint8_t path_len, uint8_t extra_type, uint8_t* extra, uint8_t extra_len) { return false; }
+  virtual bool onPeerPathRecvForIdentity(Packet* packet, const LocalIdentity& local_id, int sender_idx, const uint8_t* secret, uint8_t* path, uint8_t path_len, uint8_t extra_type, uint8_t* extra, uint8_t extra_len) {
+    (void)local_id;
+    return onPeerPathRecv(packet, sender_idx, secret, path, path_len, extra_type, extra, extra_len);
+  }
 
   /**
    * \brief  A new incoming Advertisement has been received.
@@ -128,6 +149,10 @@ protected:
    * \param  sender  public key provided by sender
   */
   virtual void onAnonDataRecv(Packet* packet, const uint8_t* secret, const Identity& sender, uint8_t* data, size_t len) { }
+  virtual void onAnonDataRecvForIdentity(Packet* packet, const LocalIdentity& local_id, const uint8_t* secret, const Identity& sender, uint8_t* data, size_t len) {
+    (void)local_id;
+    onAnonDataRecv(packet, secret, sender, data, len);
+  }
 
   /**
    * \brief  A path TO 'sender' has been received. (also with optional 'extra' data encoded)
