@@ -385,7 +385,11 @@ mesh::Packet *MyMesh::createSelfAdvert() {
 
 mesh::Packet *MyMesh::createRoomAdvert() {
   uint8_t app_data[MAX_ADVERT_DATA_SIZE];
+  char saved_name[sizeof(_prefs.node_name)];
+  memcpy(saved_name, _prefs.node_name, sizeof(saved_name));
+  snprintf(_prefs.node_name, sizeof(_prefs.node_name), "%s Room", saved_name);
   uint8_t app_data_len = _cli.buildAdvertData(ADV_TYPE_ROOM, app_data);
+  memcpy(_prefs.node_name, saved_name, sizeof(saved_name));
   return createAdvert(room_id, app_data, app_data_len);
 }
 
@@ -1721,6 +1725,11 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply
       Serial.printf("\n");
     }
     reply[0] = 0;
+  } else if (strncmp(command, "room.post", 9) == 0) {
+    char* msg = command + 9;
+    while (*msg == ' ') msg++;
+    if (!*msg) strcpy(reply, "ERR empty message");
+    else { roomStorePost(room_id, msg); strcpy(reply, "OK"); }
   } else if (memcmp(command, "discover.neighbors", 18) == 0) {
     const char* sub = command + 18;
     while (*sub == ' ') sub++;
