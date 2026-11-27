@@ -244,11 +244,18 @@ bool ClientACL::saveAtomic(FILESYSTEM* fs, bool (*filter)(ClientInfo*)) {
 
 bool ClientACL::clear() {
   if (!_fs) return false; // no filesystem, nothing to clear
-  if (_fs->exists(_storage_path)) {
-    _fs->remove(_storage_path);
+  bool success = true;
+  char slot_path[48];
+  for (int i = 0; i < 2; i++) {
+    snprintf(slot_path, sizeof(slot_path), "%s.%d", _storage_path, i);
+    if (_fs->exists(slot_path) && !_fs->remove(slot_path)) success = false;
   }
+  if (_fs->exists(_storage_path) && !_fs->remove(_storage_path)) success = false;
+  if (!success) return false;
   memset(clients, 0, sizeof(clients));
   num_clients = 0;
+  _atomic_generation = 0;
+  _atomic_slot = 1;
   return true;
 }
 
