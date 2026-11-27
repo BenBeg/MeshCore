@@ -914,7 +914,7 @@ void MyMesh::handleRoomCommand(uint32_t timestamp, char* command, char* reply) {
     } else strcpy(reply, "Err - invalid params");
     return;
   }
-  strcpy(reply, "ERR unsupported Room command");
+  _cli.handleCommand(timestamp, command, reply);
 }
 
 void MyMesh::onRoomPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender_idx,
@@ -1318,6 +1318,10 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   uptime_millis = 0;
   next_local_advert = next_flood_advert = 0;
   room_next_local_advert = room_next_flood_advert = 0;
+  room_dirty_contacts_expiry = room_next_push = 0;
+  room_num_posted = room_num_post_pushes = 0;
+  room_next_client_idx = room_next_post_idx = 0;
+  memset(room_posts, 0, sizeof(room_posts));
   dirty_contacts_expiry = 0;
   set_radio_at = revert_radio_at = 0;
   _logging = false;
