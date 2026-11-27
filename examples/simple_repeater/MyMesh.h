@@ -84,7 +84,7 @@ struct NeighbourInfo {
 #define ROOM_MAX_POST_TEXT_LEN (160-9)
 #define ROOM_SERVER_RESPONSE_DELAY 300
 #define ROOM_TXT_ACK_DELAY 200
-#define ROOM_TX_PRIORITY 4
+#define ROOM_TX_PRIORITY 4  // lower priority than Repeater forwarding/control (queue selects the lowest value)
 
 struct RoomPostInfo {
   mesh::Identity author;
