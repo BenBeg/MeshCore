@@ -1,6 +1,6 @@
 # SenseCAP Solar Repeater + Room Server Integration
 
-Status: implementation in progress. The full 15-target firmware matrix and native unit tests passed on commit 36f9b80f6d74b21eed5c65ca7323b347f4f250e0; hardware validation remains outstanding.
+Status: implementation in progress. Native unit tests passed on commit 4d4b360fcf886b2a7095418d4757c5d5b531c084; the full 15-target matrix passed on its parent code commit 53c4440244ae2e9af6f2a0a08769a6d71643e4a7. The latest full matrix is queued; hardware validation remains outstanding.
 
 Target branch: `feature/sensecap-repeater-room`
 Target PlatformIO environment: `SenseCap_Solar_repeater`
@@ -91,6 +91,7 @@ Implemented on the feature branch:
 - Room and Repeater use independent ACL instances and files. Repeater ACL remains on InternalFS at `/s_contacts`; Room ACL is on the dedicated ExtraFS at `/room_contacts`.
 - Both standard advert types are signed by their respective identities; Room discovery responses are supported and Room advertisements are staggered from Repeater advertisements.
 - Room login, standard request handling, text posts, ACK handling, CLI replies and post synchronization have been integrated into the Repeater application.
+- Room peer-route changes and flood-login route invalidations are now debounced into the independent Room ACL journal; unused route-buffer bytes are zero-normalized before change detection and persistence.
 - All Room service transmissions, including ACKs, use queue priority 4, below normal Repeater forwarding/control traffic (priorities 0–3). The shared packet manager and Dispatcher remain the only TX scheduler.
 - Room outbound enqueue is capped when the shared queue has four or more packets or fewer than four packet buffers remain free. The SenseCAP target pool is increased from 32 to 36, preserving the Repeater's original 32-buffer capacity while reserving a small bounded allowance for Room traffic.
 - Room post storage and Room contacts use the dedicated 100 KiB ExtraFS; Repeater settings, Repeater contacts and both identity files remain on the original InternalFS.
