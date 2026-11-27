@@ -232,6 +232,7 @@ protected:
     return idx == 0 ? &self_id : NULL;
 #endif
   }
+public:
   void setRoomIdentity(const mesh::LocalIdentity& id) { room_id = id; }
   mesh::LocalIdentity& getRoomIdentity() { return room_id; }
   bool isRoomServiceEnabled() const { return room_service_enabled; }
