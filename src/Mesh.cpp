@@ -666,6 +666,12 @@ Packet* Mesh::createControlData(const uint8_t* data, size_t len) {
 }
 
 void Mesh::sendFlood(Packet* packet, uint32_t delay_millis, uint8_t path_hash_size) {
+  uint8_t pri = packet->getPayloadType() == PAYLOAD_TYPE_PATH ? 2 :
+                (packet->getPayloadType() == PAYLOAD_TYPE_ADVERT ? 3 : 1);
+  sendFloodPriority(packet, delay_millis, path_hash_size, pri);
+}
+
+void Mesh::sendFloodPriority(Packet* packet, uint32_t delay_millis, uint8_t path_hash_size, uint8_t priority) {
   if (packet->getPayloadType() == PAYLOAD_TYPE_TRACE) {
     MESH_DEBUG_PRINTLN("%s Mesh::sendFlood(): TRACE type not suspported", getLogDateTime());
     return;
@@ -674,25 +680,20 @@ void Mesh::sendFlood(Packet* packet, uint32_t delay_millis, uint8_t path_hash_si
     MESH_DEBUG_PRINTLN("%s Mesh::sendFlood(): invalid path_hash_size", getLogDateTime());
     return;
   }
-
   packet->header &= ~PH_ROUTE_MASK;
   packet->header |= ROUTE_TYPE_FLOOD;
   packet->setPathHashSizeAndCount(path_hash_size, 0);
-
-  _tables->markSeen(packet); // mark this packet as already sent in case it is rebroadcast back to us
-
-  uint8_t pri;
-  if (packet->getPayloadType() == PAYLOAD_TYPE_PATH) {
-    pri = 2;
-  } else if (packet->getPayloadType() == PAYLOAD_TYPE_ADVERT) {
-    pri = 3;   // de-prioritie these
-  } else {
-    pri = 1;
-  }
-  sendPacket(packet, pri, delay_millis);
+  _tables->markSeen(packet);
+  sendPacket(packet, priority, delay_millis);
 }
 
 void Mesh::sendFlood(Packet* packet, uint16_t* transport_codes, uint32_t delay_millis, uint8_t path_hash_size) {
+  uint8_t pri = packet->getPayloadType() == PAYLOAD_TYPE_PATH ? 2 :
+                (packet->getPayloadType() == PAYLOAD_TYPE_ADVERT ? 3 : 1);
+  sendFloodPriority(packet, transport_codes, delay_millis, path_hash_size, pri);
+}
+
+void Mesh::sendFloodPriority(Packet* packet, uint16_t* transport_codes, uint32_t delay_millis, uint8_t path_hash_size, uint8_t priority) {
   if (packet->getPayloadType() == PAYLOAD_TYPE_TRACE) {
     MESH_DEBUG_PRINTLN("%s Mesh::sendFlood(): TRACE type not suspported", getLogDateTime());
     return;
@@ -701,72 +702,59 @@ void Mesh::sendFlood(Packet* packet, uint16_t* transport_codes, uint32_t delay_m
     MESH_DEBUG_PRINTLN("%s Mesh::sendFlood(): invalid path_hash_size", getLogDateTime());
     return;
   }
-
   packet->header &= ~PH_ROUTE_MASK;
   packet->header |= ROUTE_TYPE_TRANSPORT_FLOOD;
   packet->transport_codes[0] = transport_codes[0];
   packet->transport_codes[1] = transport_codes[1];
   packet->setPathHashSizeAndCount(path_hash_size, 0);
-
-  _tables->markSeen(packet); // mark this packet as already sent in case it is rebroadcast back to us
-
-  uint8_t pri;
-  if (packet->getPayloadType() == PAYLOAD_TYPE_PATH) {
-    pri = 2;
-  } else if (packet->getPayloadType() == PAYLOAD_TYPE_ADVERT) {
-    pri = 3;   // de-prioritie these
-  } else {
-    pri = 1;
-  }
-  sendPacket(packet, pri, delay_millis);
+  _tables->markSeen(packet);
+  sendPacket(packet, priority, delay_millis);
 }
 
 void Mesh::sendDirect(Packet* packet, const uint8_t* path, uint8_t path_len, uint32_t delay_millis) {
+  uint8_t pri = packet->getPayloadType() == PAYLOAD_TYPE_TRACE ? 5 :
+                (packet->getPayloadType() == PAYLOAD_TYPE_PATH ? 1 : 0);
+  sendDirectPriority(packet, path, path_len, delay_millis, pri);
+}
+
+void Mesh::sendDirectPriority(Packet* packet, const uint8_t* path, uint8_t path_len, uint32_t delay_millis, uint8_t priority) {
   packet->header &= ~PH_ROUTE_MASK;
   packet->header |= ROUTE_TYPE_DIRECT;
-
-  uint8_t pri;
-  if (packet->getPayloadType() == PAYLOAD_TYPE_TRACE) {   // TRACE packets are different
-    // for TRACE packets, path is appended to end of PAYLOAD. (path is used for SNR's)
-    memcpy(&packet->payload[packet->payload_len], path, path_len);  // NOTE: path_len here can be > 64, and NOT in the new scheme
+  if (packet->getPayloadType() == PAYLOAD_TYPE_TRACE) {
+    memcpy(&packet->payload[packet->payload_len], path, path_len);
     packet->payload_len += path_len;
-
     packet->path_len = 0;
-    pri = 5;   // maybe make this configurable
   } else {
     packet->path_len = Packet::copyPath(packet->path, path, path_len);
-    if (packet->getPayloadType() == PAYLOAD_TYPE_PATH) {
-      pri = 1;   // slightly less priority
-    } else {
-      pri = 0;
-    }
   }
-  _tables->markSeen(packet); // mark this packet as already sent in case it is rebroadcast back to us
-  sendPacket(packet, pri, delay_millis);
+  _tables->markSeen(packet);
+  sendPacket(packet, priority, delay_millis);
 }
 
 void Mesh::sendZeroHop(Packet* packet, uint32_t delay_millis) {
+  sendZeroHopPriority(packet, delay_millis, 0);
+}
+
+void Mesh::sendZeroHopPriority(Packet* packet, uint32_t delay_millis, uint8_t priority) {
   packet->header &= ~PH_ROUTE_MASK;
   packet->header |= ROUTE_TYPE_DIRECT;
-
-  packet->path_len = 0;  // path_len of zero means Zero Hop
-
-  _tables->markSeen(packet); // mark this packet as already sent in case it is rebroadcast back to us
-
-  sendPacket(packet, 0, delay_millis);
+  packet->path_len = 0;
+  _tables->markSeen(packet);
+  sendPacket(packet, priority, delay_millis);
 }
 
 void Mesh::sendZeroHop(Packet* packet, uint16_t* transport_codes, uint32_t delay_millis) {
+  sendZeroHopPriority(packet, transport_codes, delay_millis, 0);
+}
+
+void Mesh::sendZeroHopPriority(Packet* packet, uint16_t* transport_codes, uint32_t delay_millis, uint8_t priority) {
   packet->header &= ~PH_ROUTE_MASK;
   packet->header |= ROUTE_TYPE_TRANSPORT_DIRECT;
   packet->transport_codes[0] = transport_codes[0];
   packet->transport_codes[1] = transport_codes[1];
-
-  packet->path_len = 0;  // path_len of zero means Zero Hop
-
-  _tables->markSeen(packet); // mark this packet as already sent in case it is rebroadcast back to us
-
-  sendPacket(packet, 0, delay_millis);
+  packet->path_len = 0;
+  _tables->markSeen(packet);
+  sendPacket(packet, priority, delay_millis);
 }
 
 }
