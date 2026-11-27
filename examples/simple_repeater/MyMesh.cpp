@@ -1353,8 +1353,8 @@ void MyMesh::roomLoop() {
   }
   room_next_client_idx = (room_next_client_idx + 1) % count;
 
-  // Keep the Repeater's solar power-saving mode available. Continue polling only
-  // while another client has unsent posts; a pending ACK can wake the radio itself.
+  // Keep the Repeater's solar power-saving mode available. Continue only while
+  // there are unsent posts or an ACK timeout that must be serviced.
   bool ready_work = false;
   bool waiting_ack = false;
   unsigned long earliest_ack_timeout = 0;
