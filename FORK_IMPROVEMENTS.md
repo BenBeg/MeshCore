@@ -15,7 +15,7 @@ This fork adds a SenseCAP Solar–focused combined Repeater + Room Server implem
 - **Solar power behavior:** schedules Room work around the Repeater's sleep path so future timers do not continuously prevent sleep.
 - **Receive and storage hardening:** validates local identity keypairs, reserves safe receive-buffer terminator space, validates decrypted and persisted encoded path lengths, sanitizes malformed legacy routes for rediscovery, rejects undersized ACK/data headers, and tests encoded path-length boundaries.
 - **SenseCAP build configuration:** adds the dedicated ExtraFS partition for Room data while retaining the original InternalFS for Repeater settings and identities, plus the North American MeshCore radio preset.
-- **CI maintenance:** adjusts PlatformIO build configuration and workflow behavior for reproducible targeted builds.
+- **CI maintenance:** adjusts PlatformIO build configuration, runs reproducible firmware matrices, and cancels superseded PR build/test runs so obsolete commits do not consume CI capacity.
 
 ## Verification status
 
