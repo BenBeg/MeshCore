@@ -1,4 +1,5 @@
 #include "MyMesh.h"
+#include <stddef.h>
 #include <algorithm>
 
 /* ------------------------------ Config -------------------------------- */
@@ -711,7 +712,7 @@ bool MyMesh::onPeerPathRecvForIdentity(mesh::Packet* packet, const mesh::LocalId
 
 
 
-#define ROOM_JOURNAL_MAX_BYTES 9000
+#define ROOM_JOURNAL_MAX_BYTES 7500
 #define ROOM_JOURNAL_MAGIC 0x31505352UL  // "RSP1"
 #define ROOM_JOURNAL_VERSION 1
 
@@ -1168,7 +1169,8 @@ void MyMesh::handleRoomCommand(uint32_t timestamp, char* command, char* reply) {
     char* msg = command + 9;
     while (*msg == ' ') msg++;
     if (!*msg) strcpy(reply, "ERR empty message");
-    else { roomStorePost(room_id, msg); strcpy(reply, "OK"); }
+    else if (roomStorePost(room_id, msg)) strcpy(reply, "OK");
+    else strcpy(reply, "ERR room storage unavailable");
     return;
   }
   if (strncmp(command, "setperm ", 8) == 0) {
@@ -1590,6 +1592,9 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   next_local_advert = next_flood_advert = 0;
   room_next_local_advert = room_next_flood_advert = 0;
   room_dirty_contacts_expiry = room_next_push = 0;
+  room_journal_ready = room_journal_needs_compact = false;
+  room_journal_generation = room_journal_size = room_next_sequence = 0;
+  room_journal_slot = room_post_count = 0;
   room_num_posted = room_num_post_pushes = 0;
   room_next_client_idx = room_next_post_idx = 0;
   memset(room_posts, 0, sizeof(room_posts));
@@ -1666,6 +1671,7 @@ void MyMesh::begin(FILESYSTEM *fs) {
   acl.load(_fs, self_id);
   room_acl.setStoragePath("/room_contacts");
   room_acl.load(_fs, room_id);
+  loadRoomPosts();
   // TODO: key_store.begin();
   region_map.load(_fs);
 
@@ -1996,7 +2002,8 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply
     char* msg = command + 9;
     while (*msg == ' ') msg++;
     if (!*msg) strcpy(reply, "ERR empty message");
-    else { roomStorePost(room_id, msg); strcpy(reply, "OK"); }
+    else if (roomStorePost(room_id, msg)) strcpy(reply, "OK");
+    else strcpy(reply, "ERR room storage unavailable");
   } else if (memcmp(command, "discover.neighbors", 18) == 0) {
     const char* sub = command + 18;
     while (*sub == ' ') sub++;
