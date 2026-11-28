@@ -17,6 +17,24 @@ This fork adds a SenseCAP Solar–focused combined Repeater + Room Server implem
 - **SenseCAP build configuration:** adds the dedicated ExtraFS partition for Room data while retaining the original InternalFS for Repeater settings and identities, plus the North American MeshCore radio preset.
 - **CI maintenance:** adjusts PlatformIO build configuration, runs reproducible firmware matrices, and cancels superseded PR build/test runs so obsolete commits do not consume CI capacity.
 
+## Development log — change-size snapshot (2026-11-27)
+
+This snapshot records where the fork's accumulated changes have gone, measured against upstream `main` at base commit `75b04ef06def54b348400cb1b138afb6749ffd4f`, through fork commit `a8a62950049d790c4c3e4056ac36015863c5c362`.
+
+| Area | Files changed | Lines added | Lines removed | What the work went into |
+|---|---:|---:|---:|---|
+| Repeater/Room integration and shared firmware source (`examples/`, `src/`, `variants/`) | 15 | 1,875 | 136 | Room service integration, shared identity-aware packet handling, ACL and journal persistence/recovery, radio scheduling, receive validation, sleep coordination, and SenseCAP build configuration |
+| Documentation | 5 | 602 | 0 | Integration design, implementation log, storage failure-injection plan, and the three-device hardware lab protocol |
+| Automated native tests | 4 | 530 | 0 | Atomic ACL recovery, packet path-length validation, Room journal recovery, and Room sequence rollover |
+| CI workflows | 2 | 19 | 23 | Build/test workflow maintenance and cancellation of superseded runs |
+| **Total** | **26** | **3,026** | **159** | **2,867 net lines added** |
+
+The line counts are GitHub's per-file comparison totals; they are a measure of source change, not compiled firmware size. The largest production-file additions are `examples/simple_repeater/MyMesh.cpp` (+875), `src/helpers/ClientACL.cpp` (+313), `src/helpers/RoomJournalCore.h` (+223), and `examples/simple_repeater/main.cpp` (+102).
+
+**Interpretation:** the bulk of production work is in integrating the Room service and hardening its persistence while retaining the existing Repeater. A substantial additional portion is test coverage and documentation; those files do not become part of the deployed firmware image. The current source-change total alone cannot establish flash usage or RAM headroom. The next engineering checkpoint is to record actual linked image size, static RAM, runtime heap/stack high-water marks, and packet/TX queue peaks for the combined SenseCAP build before treating resource fit as proven.
+
+This snapshot should be refreshed as the implementation changes materially, with the comparison base and head commit recorded each time so the totals remain reproducible.
+
 ## Verification status
 
 - **Passed:** native unit tests 80/80 and all 16 firmware targets on code commit `524fce7c21009c3e4f029f5d08a10a187cab0816`. [Native run](https://github.com/BenBeg/MeshCore/actions/runs/46082374667) · [Firmware matrix](https://github.com/BenBeg/MeshCore/actions/runs/46082374675).
