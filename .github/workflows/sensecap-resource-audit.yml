@@ -60,7 +60,7 @@ jobs:
           cp stock-repeater-build.log audit-output/
           "$SIZE_TOOL" -A "$ELF" > audit-output/stock-repeater-sections.txt
           cp "$ELF" audit-output/
-          find .pio/build/SenseCap_Solar_repeater -type f \( -name '*.bin' -o -name '*.hex' -o -name '*.map' \) -exec cp {} audit-output/ \;
+          while IFS= read -r FILE; do cp "$FILE" "audit-output/stock-repeater-$(basename "$FILE")"; done < <(find .pio/build/SenseCap_Solar_repeater -type f \( -name "*.bin" -o -name "*.hex" -o -name "*.map" \))
 
       - name: Upload stock Repeater audit
         uses: actions/upload-artifact@v4
@@ -112,7 +112,7 @@ jobs:
               "$SIZE_TOOL" -A "$ELF"
               "$SIZE_TOOL" -A "$ELF" > "audit-output/$ENV-sections.txt"
               cp "$ELF" "audit-output/$ENV.elf"
-              find ".pio/build/$ENV" -type f \( -name '*.bin' -o -name '*.hex' -o -name '*.map' \) -exec cp {} audit-output/ \;
+              while IFS= read -r FILE; do cp "$FILE" "audit-output/$ENV-$(basename "$FILE")"; done < <(find ".pio/build/$ENV" -type f \( -name "*.bin" -o -name "*.hex" -o -name "*.map" \))
             done
           } >> "$GITHUB_STEP_SUMMARY"
           cp room-server-build.log combined-repeater-room-build.log audit-output/
