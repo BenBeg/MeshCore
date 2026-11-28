@@ -73,7 +73,13 @@ jobs:
           test -n "$SIZE_TOOL" && test -n "$ELF"
           mkdir -p audit-output
           BIN="$(find .pio/build/SenseCap_Solar_repeater -type f -name '*.bin' -print -quit)"
-          test -n "$BIN"
+          if [ -z "$BIN" ]; then
+            OBJCOPY_TOOL="$(find "$HOME/.platformio/packages" -type f -name arm-none-eabi-objcopy -print -quit)"
+            test -n "$OBJCOPY_TOOL"
+            BIN="audit-output/stock-repeater-firmware.bin"
+            "$OBJCOPY_TOOL" -O binary "$ELF" "$BIN"
+          fi
+          test -s "$BIN"
           {
             echo "## Stock Repeater size summary"
             echo
@@ -137,7 +143,13 @@ jobs:
             ELF="$(find ".pio/build/$ENV" -type f -name '*.elf' -print -quit)"
             test -n "$ELF"
             BIN="$(find ".pio/build/$ENV" -type f -name '*.bin' -print -quit)"
-            test -n "$BIN"
+            if [ -z "$BIN" ]; then
+              OBJCOPY_TOOL="$(find "$HOME/.platformio/packages" -type f -name arm-none-eabi-objcopy -print -quit)"
+              test -n "$OBJCOPY_TOOL"
+              BIN="audit-output/$ENV-firmware.bin"
+              "$OBJCOPY_TOOL" -O binary "$ELF" "$BIN"
+            fi
+            test -s "$BIN"
             {
               echo "## $ENV size summary"
               echo
