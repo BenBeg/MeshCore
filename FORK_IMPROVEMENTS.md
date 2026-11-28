@@ -121,3 +121,12 @@ See [the integration design and verification notes](./docs/SENSECAP_REPEATER_ROO
 The fork's Room-only image built, and the combined production image built with PlatformIO reporting 47,564 bytes RAM and 384,696 bytes flash against its 235,520-byte RAM and 708,608-byte flash limits. The diagnostic build failed before compilation because its PlatformIO environment did not explicitly extend the `env:SenseCap_Solar_repeater` environment. Its inheritance reference has been corrected. The figures above are preliminary build summaries; the resource audit remains incomplete until the instrumented image and artifact collection succeed.
 
 **Next verification:** rerun native tests and PR Build Check on the corrected branch head, confirm all four images and artifacts, then record ELF sections and stack-usage data in `docs/RESOURCE_AUDIT.md`. No hardware has been flashed and PR #1 remains draft.
+
+
+## Development log — resource artifact collector correction (2026-11-28)
+
+**Observed on PR Build Check run `46100040146`, branch head `be73fcd40dd53d8c15248c2fc9604bd1a48140a3`:** all 16 firmware matrix targets passed, including the SenseCAP Solar Repeater and ThinkNode M5 BLE target. The stock Repeater, Room-only, combined production, and instrumented diagnostic images all compiled. Both resource-audit jobs then failed in the capture step because the script required a `.bin` file that PlatformIO did not emit in these environments (it emitted ELF/HEX/ZIP outputs).
+
+**Correction:** the capture steps now use the target toolchain's `arm-none-eabi-objcopy` to generate a raw binary from each ELF when a pre-existing `.bin` is absent. The collector still requires the ELF and `arm-none-eabi-size`, and preserves the ELF, section report, generated binary, HEX/MAP and available `.su` files. This changes CI artifact collection only; it does not alter firmware source or production build flags.
+
+**Verification status:** pending a fresh PR Build Check after this workflow correction. The prior run's successful firmware compilation remains valid, but no resource artifact is claimed until both upload jobs complete and the artifacts are inspected.
