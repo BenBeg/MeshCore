@@ -7,6 +7,7 @@
 
 #if defined(RESOURCE_AUDIT) && defined(NRF52_PLATFORM)
   #include <task.h>
+  #include <malloc.h>
 #endif
 
 /* ------------------------------ Config -------------------------------- */
@@ -2154,7 +2155,14 @@ void MyMesh::printResourceRuntimeStats() {
   Serial.print(manager->getAuditPeakInbound());
 #if defined(NRF52_PLATFORM)
   Serial.print(" loop_stack_min_free_bytes=");
-  Serial.println(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t));
+  Serial.print(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t));
+  struct mallinfo heap_info = mallinfo();
+  Serial.print(" heap_arena_bytes=");
+  Serial.print(heap_info.arena);
+  Serial.print(" heap_used_bytes=");
+  Serial.print(heap_info.uordblks);
+  Serial.print(" heap_free_total_bytes=");
+  Serial.println(heap_info.fordblks);
 #else
   Serial.println();
 #endif
