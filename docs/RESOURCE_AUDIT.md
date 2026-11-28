@@ -48,6 +48,12 @@ A first source inspection identifies the main fixed-memory costs that the ELF re
 
 These observations show why the resource audit must not look only at firmware flash size. The Room service adds meaningful fixed RAM and heap pressure even though it shares the Repeater's radio and packet manager. Do not treat the formulas above as final byte counts; use the target compiler's ELF section report and runtime measurements for acceptance.
 
+## Opt-in target-compiler object-size diagnostics
+
+A bench-only PlatformIO environment named `SenseCap_Solar_repeater_resource_audit` enables `RESOURCE_AUDIT=1`. On boot it prints target-compiler `sizeof` values for `MyMesh`, `ClientInfo`, `ClientACL`, `RoomPostInfo`, `mesh::Packet` and `StaticPoolPacketManager`, plus the Room post cache, one ACL client array, all 36 packet objects and the three packet-queue backing arrays.
+
+These are compiler-derived object sizes, not estimates. They exclude allocator metadata, heap fragmentation and stack use. The diagnostic build is not the production firmware. At 115200 baud, capture the complete boot output beginning with `=== SENSECAP RESOURCE AUDIT: COMPILE-TIME FOOTPRINT ===` and record the exact firmware SHA and build artifact. This is a static inventory, not a free-heap measurement.
+
 ## Runtime measurements
 
 Build-time section sizes do not reveal heap fragmentation, worst-case stack use, or queue pressure. These require runtime instrumentation and hardware tests.
