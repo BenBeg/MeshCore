@@ -35,11 +35,28 @@ The line counts are GitHub's per-file comparison totals; they are a measure of s
 
 This snapshot should be refreshed as the implementation changes materially, with the comparison base and head commit recorded each time so the totals remain reproducible.
 
+## Development log — resource-audit tooling (2026-11-27)
+
+**Change:** added `.github/workflows/sensecap-resource-audit.yml` (commit `a4a27bd3b66b48d452eb07e4ff547d22e8d09789`).
+
+The audit is designed to build three comparable SenseCAP images and preserve their build outputs:
+
+1. **Upstream stock Repeater:** checked out at baseline commit `75b04ef06def54b348400cb1b138afb6749ffd4f`, before the fork's combined integration.
+2. **Fork Room-only:** `SenseCap_Solar_room_server` from the pull-request revision.
+3. **Fork combined Repeater + Room:** `SenseCap_Solar_repeater` from the pull-request revision.
+
+For each target, the workflow captures PlatformIO's build report, ELF section sizes from `arm-none-eabi-size -A`, and available ELF/BIN/HEX/MAP outputs as GitHub Actions artifacts. This gives us a reproducible first comparison of flash and static section usage. It does not measure runtime heap fragmentation, stack high-water marks, packet-pool peaks, radio load, or power consumption; those remain separate runtime/hardware measurements.
+
+**Important comparison detail:** upstream `main` still defines `SenseCap_Solar_repeater` as the stock Repeater. The fork repurposes that environment for the combined image and adds the ExtraFS linker layout. Therefore, the baseline must be built from the pinned upstream revision, while Room-only and combined images are built from the fork revision.
+
+**Status at this log entry:** workflow committed; no audit run or build-size result is yet available. Do not infer a pass from the workflow file existing. The first successful run and its artifacts will be reviewed and summarized here.
+
 ## Verification status
 
 - **Passed:** native unit tests 80/80 and all 16 firmware targets on code commit `524fce7c21009c3e4f029f5d08a10a187cab0816`. [Native run](https://github.com/BenBeg/MeshCore/actions/runs/46082374667) · [Firmware matrix](https://github.com/BenBeg/MeshCore/actions/runs/46082374675).
 - **Passed:** all 16 firmware targets on `bcbd534a3021bfa4bed72495aff8ea7c637c62de`, including SenseCAP Solar Repeater and ThinkNode M5 BLE companion. The native test run on that commit had 80 successful tests but the new ACL recovery test did not compile because it used Unity headers instead of the repository's GoogleTest harness.
 - **Corrected, pending CI:** ACL recovery tests were converted to GoogleTest in `9fe734a4`. Subsequent commits `229bc2bd`, `391c0f76`, `5c99278d`, `2a1c1e43`, `26487871`, `4f941ba9`, `947418e1`, `fdaa249c`, and `bb6d2967` fix identity-path detection and harden ACL/journal recovery (stack use, second-pass integrity checks, portable generation ordering, journal fallback and fail-closed handling of existing unreadable journals). The lab protocol was updated in `003df990` to include a sacrificial-storage validation case. The current branch head has not yet received a fresh CI run, so these latest changes are not claimed as verified.
+- **Resource audit tooling added, results pending:** the new SenseCAP Resource Audit workflow builds upstream stock Repeater, fork Room-only and fork combined images, then captures linker section sizes and build artifacts. No successful run has yet been observed; flash/RAM measurements remain unverified.
 - **Still required:** production-integrated ACL filesystem load/migration/reboot tests; identity and ExtraFS failure injection; sacrificial-device power-loss testing; real-device sleep, storage and radio tests; official-client interoperability; Canadian ISED authorization verification.
 - **Not done:** no device has been flashed and the pull request has not been merged.
 
