@@ -976,12 +976,12 @@ void MyMesh::loadRoomPosts() {
   bool exists_b = _room_fs->exists(roomJournalPath(1));
   if (!roomJournalCanInitializeEmpty(exists_a, exists_b)) {
     room_service_enabled = false;
-    MESH_DEBUG_PRINTLN("Room journal unreadable; preserving files and disabling Room service");
+    Serial.println("WARNING: Room journal unreadable; preserving files and disabling Room service");
     return;
   }
   if (!compactRoomPosts()) {
     room_service_enabled = false;
-    MESH_DEBUG_PRINTLN("Room journal initialization failed; disabling Room service");
+    Serial.println("WARNING: Room journal initialization failed; disabling Room service");
   }
 }
 
