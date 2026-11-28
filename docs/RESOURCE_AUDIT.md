@@ -29,18 +29,23 @@ Record:
 
 | Metric | Stock Repeater | Room-only | Combined production | Combined diagnostic |
 |---|---:|---:|---:|---:|
-| Build result | Pending | Pending | Pending | Pending |
-| Firmware BIN bytes | Pending | Pending | Pending | Pending |
-| ELF total bytes | Pending | Pending | Pending | Pending |
-| Flash ceiling / linker region | Confirm | Confirm | 708,608 bytes | 708,608 bytes |
-| `.text` + `.rodata` | Pending | Pending | Pending | Pending |
-| `.data` | Pending | Pending | Pending | Pending |
-| `.bss` | Pending | Pending | Pending | Pending |
-| Other RAM-resident sections | Pending | Pending | Pending | Pending |
-| Static RAM estimate | Pending | Pending | Pending | Pending |
-| Target `sizeof` inventory | — | — | — | Pending |
-| Remaining flash headroom | Pending | Pending | Pending | Pending |
-Use PlatformIO's final build summary and `arm-none-eabi-size -A` output. Do not add the external QSPI filesystem capacity to available MCU RAM or to the internal application flash budget. Confirm the linker script's actual memory regions before calculating headroom.
+| Build result | PASS | PASS | PASS | PASS |
+| Firmware BIN bytes | 365,396 | 359,540 | 384,696 | 385,528 |
+| ELF `.text` + `.ARM.exidx` | 363,536 | 357,696 | 382,832 | 383,664 |
+| `.data` | 1,860 | 1,844 | 1,864 | 1,864 |
+| `.bss` | 33,016 | 36,752 | 45,700 | 45,700 |
+| Linker `.heap` reservation | 200,644 | 196,924 | 187,956 | 187,956 |
+| `.data` + `.bss` (PlatformIO RAM use) | 34,876 | 38,596 | 47,564 | 47,564 |
+| Total `.data` + `.bss` + `.heap` region | 235,520 | 235,520 | 235,520 | 235,520 |
+| Flash ceiling | 811,008 | 708,608 | 708,608 | 708,608 |
+| BIN-based flash headroom | 445,612 | 349,068 | 323,912 | 323,080 |
+| Target `sizeof` inventory | — | — | — | Built; serial capture pending |
+
+**Artifact source:** PR Build Check run [46100886098](https://github.com/BenBeg/MeshCore/actions/runs/46100886098), branch SHA `92b52fd0fb597390c9e667f47032721f0892e835`. The stock report is from the pinned upstream baseline; the other three images are from the fork. BIN-based headroom is linker-region length minus BIN size and is a useful first estimate, not a substitute for checking load segments, bootloader reservations or deployment packaging.
+
+**Interpretation:** the combined production image is 19,300 bytes (5.28%) larger than the stock Repeater BIN. Its linked `.data` + `.bss` rises by 12,688 bytes, from 34,876 to 47,564 bytes. The linker correspondingly reserves 12,688 fewer bytes for `.heap`, leaving the total RAM region allocation unchanged at 235,520 bytes. This does **not** prove runtime heap sufficiency: it means the integration consumes more of the RAM region that the linker previously made available as heap. Combined BIN flash headroom is 323,912 bytes (about 45.7% of the fork's 708,608-byte application region).
+
+The stock and fork flash ceilings differ because their linker layouts differ; compare absolute bytes and the actual image-specific region, not percentages against a shared assumed ceiling. The generated raw BIN is useful for image size/headroom, but ELF section and linker data remain authoritative for understanding RAM.
 
 ## Source-level RAM inventory (preliminary, not a measurement)
 
@@ -117,8 +122,9 @@ The team must choose numerical reserve thresholds after seeing the first build a
 
 ## Current status
 
-- Workflow implementation: committed; first successful run not yet confirmed.
-- Binary sizes and ELF section measurements: pending.
-- Runtime heap/stack/queue measurements: pending.
+- Workflow implementation: verified on PR Build Check run `46100886098`; both resource artifact archives uploaded successfully.
+- Stock, Room-only, combined production and combined diagnostic BIN/ELF section measurements: recorded above.
+- Instrumented `.su` reports archived; largest individual compiler-reported frame is 2,352 bytes (`ge_double_scalarmult_vartime`). This is a per-function frame, not a worst-case call-chain or runtime stack high-water measurement.
+- Runtime free-heap, largest-block, stack high-water and packet/TX queue measurements: pending hardware instrumentation and bench testing.
 - Three-device performance and sleep tests: pending.
 - Hardware has not been flashed as part of this audit.
