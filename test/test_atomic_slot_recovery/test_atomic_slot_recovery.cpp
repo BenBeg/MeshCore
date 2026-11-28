@@ -11,6 +11,8 @@ TEST(AtomicSlotRecovery, NewestGenerationAndEqualTie) {
   EXPECT_EQ(1, atomicSlotNewest(true, 4, true, 5));
   EXPECT_EQ(0, atomicSlotNewest(true, 5, true, 5));
   EXPECT_EQ(0, atomicSlotNewest(true, 5, true, 4));
+  // An exact half-range difference is ambiguous; deterministic tie policy is slot 0.
+  EXPECT_EQ(0, atomicSlotNewest(true, 0, true, 0x80000000UL));
 }
 
 TEST(AtomicSlotRecovery, GenerationWraparound) {

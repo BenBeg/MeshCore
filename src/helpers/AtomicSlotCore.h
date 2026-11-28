@@ -44,7 +44,10 @@ inline uint8_t atomicSlotNewest(bool valid0, uint32_t generation0,
                                 bool valid1, uint32_t generation1) {
   if (!valid0) return valid1 ? 1 : 0;
   if (!valid1) return 0;
-  return (int32_t)(generation1 - generation0) > 0 ? 1 : 0;
+  // Serial-number arithmetic avoids implementation-defined unsigned-to-signed
+  // conversion and remains correct across uint32_t generation rollover.
+  uint32_t delta = generation1 - generation0;
+  return (delta != 0 && delta < 0x80000000UL) ? 1 : 0;
 }
 
 // Try the preferred validated slot, then the other validated slot if the
