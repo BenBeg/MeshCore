@@ -92,3 +92,14 @@ This adds a static stack-frame view to the audit without changing the production
 [THREE_DEVICE_LAB_PROTOCOL.md](./docs/THREE_DEVICE_LAB_PROTOCOL.md) defines the three-device stock-versus-combined lab using the SenseCAP P1-Pro and two unmodified MeshCore ThinkNode M5 clients. It includes device roles, RF compliance gate, bench setup, serial/app evidence capture, expected behavior, relay negative control, reboot/persistence tests and a pass/fail scorecard.
 
 See [the integration design and verification notes](./docs/SENSECAP_REPEATER_ROOM_INTEGRATION.md) for architecture and remaining checks, and [the Three-Device Lab Protocol](./docs/THREE_DEVICE_LAB_PROTOCOL.md) for the practical hardware validation plan.
+
+
+## Development log — CI rerun diagnosis (2026-11-28)
+
+**Observed:** the manually requested rerun was a retry of the previously failed **Run Unit Tests** workflow run `46083362430`, attempt 2. It tested the older PR merge revision `bcbd534a3021bfa4bed72495aff8ea7c637c62de`, not the current branch head `dfb95eb35583ce2210b91cc1da5930a36cfd3e18`.
+
+**Result:** 80 of 81 native test cases succeeded. The sole build error was `test/test_atomic_slot_recovery/test_atomic_slot_recovery.cpp:1:10: fatal error: unity.h: No such file or directory`. This is the known old-revision harness mismatch, not a new runtime test assertion failure. The current branch version of that exact file begins with `#include <gtest/gtest.h>` (blob `797dba2b`), so the correction is present in the branch but was not exercised by this rerun.
+
+**Build workflow:** the PR Build Check for the same older revision completed successfully, including all 16 firmware matrix targets. That run did not contain the newly added resource-audit jobs and produced no resource artifacts. It therefore does not provide flash, static RAM or stack-frame measurements.
+
+**Next verification action:** start a new `PR Build Check` and `Run Unit Tests` workflow run from branch `feature/sensecap-repeater-room` (rather than using **Re-run failed jobs** on the older run). The resource audit is still pending. No firmware resource-fit claim is made from these results.
