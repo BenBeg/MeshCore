@@ -57,7 +57,7 @@ These observations show why the resource audit must not look only at firmware fl
 
 A bench-only PlatformIO environment named `SenseCap_Solar_repeater_resource_audit` enables `RESOURCE_AUDIT=1`. On boot it prints target-compiler `sizeof` values for `MyMesh`, `ClientInfo`, `ClientACL`, `RoomPostInfo`, `mesh::Packet` and `StaticPoolPacketManager`, plus the Room post cache, one ACL client array, all 36 packet objects and the three packet-queue backing arrays.
 
-These are compiler-derived object sizes, not estimates. They exclude allocator metadata, heap fragmentation and stack use. The diagnostic build is not the production firmware. At 115200 baud, capture the complete boot output beginning with `=== SENSECAP RESOURCE AUDIT: COMPILE-TIME FOOTPRINT ===` and record the exact firmware SHA and build artifact. This is a static inventory, not a free-heap measurement.
+These are compiler-derived object sizes, not estimates. They exclude allocator metadata, heap fragmentation and stack use. The diagnostic build is not the production firmware. At 115200 baud, capture the complete boot output beginning with `=== SENSECAP RESOURCE AUDIT: COMPILE-TIME FOOTPRINT ===` and record the exact firmware SHA and build artifact. This is a static inventory, not a free-heap measurement. The diagnostic target also compiles with GCC `-fstack-usage`; the workflow archives the generated `.su` files so we can rank individual function stack-frame estimates. These per-function figures are not a complete worst-case call-chain or interrupt-stack measurement and must be validated against runtime stack use.
 
 ## Runtime measurements
 
