@@ -303,6 +303,9 @@ public:
 
   void handleCommand(uint32_t sender_timestamp, char* command, char* reply);
   void loop();
+#if defined(RESOURCE_AUDIT)
+  void printResourceRuntimeStats();
+#endif
 
 #if defined(WITH_BRIDGE)
   void setBridgeState(bool enable) override {
