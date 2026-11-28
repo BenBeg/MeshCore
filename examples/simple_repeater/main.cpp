@@ -73,6 +73,29 @@ void setup() {
   Serial.begin(115200);
   delay(1000);
 
+#if defined(RESOURCE_AUDIT) && defined(ROOM_EXTRA_FS)
+  Serial.println("=== SENSECAP RESOURCE AUDIT: COMPILE-TIME FOOTPRINT ===");
+  Serial.print("sizeof(MyMesh)="); Serial.println(sizeof(MyMesh));
+  Serial.print("sizeof(ClientInfo)="); Serial.println(sizeof(ClientInfo));
+  Serial.print("sizeof(ClientACL)="); Serial.println(sizeof(ClientACL));
+  Serial.print("sizeof(RoomPostInfo)="); Serial.println(sizeof(RoomPostInfo));
+  Serial.print("room_post_cache_bytes=");
+  Serial.println(sizeof(RoomPostInfo) * ROOM_MAX_UNSYNCED_POSTS);
+  Serial.print("one_acl_client_array_bytes=");
+  Serial.println(sizeof(ClientInfo) * MAX_CLIENTS);
+  Serial.print("sizeof(mesh::Packet)="); Serial.println(sizeof(mesh::Packet));
+  Serial.print("packet_pool_objects=36");
+  Serial.println();
+  Serial.print("packet_pool_object_bytes=");
+  Serial.println(sizeof(mesh::Packet) * 36);
+  Serial.print("sizeof(StaticPoolPacketManager)=");
+  Serial.println(sizeof(StaticPoolPacketManager));
+  Serial.print("packet_queue_backing_array_bytes=");
+  Serial.println(3 * 36 * (sizeof(mesh::Packet*) + sizeof(uint8_t) + sizeof(uint32_t)));
+  Serial.println("NOTE: excludes allocator metadata, runtime heap fragmentation and stack usage.");
+  Serial.println("=== END RESOURCE AUDIT ===");
+#endif
+
   board.begin();
 
 #ifdef HAS_EXTERNAL_WATCHDOG
