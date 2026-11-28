@@ -2133,6 +2133,24 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply
   }
 }
 
+#if defined(RESOURCE_AUDIT)
+void MyMesh::printResourceRuntimeStats() {
+  StaticPoolPacketManager* manager = static_cast<StaticPoolPacketManager*>(_mgr);
+  Serial.print("RESOURCE_RUNTIME uptime_ms=");
+  Serial.print(millis());
+  Serial.print(" free_packets=");
+  Serial.print(manager->getFreeCount());
+  Serial.print(" peak_packets_in_use=");
+  Serial.print(manager->getAuditPeakInUse());
+  Serial.print(" tx_queue_current=");
+  Serial.print(manager->getOutboundTotal());
+  Serial.print(" tx_queue_peak=");
+  Serial.print(manager->getAuditPeakOutbound());
+  Serial.print(" rx_queue_peak=");
+  Serial.println(manager->getAuditPeakInbound());
+}
+#endif
+
 void MyMesh::loop() {
 #ifdef WITH_BRIDGE
   bridge.loop();
