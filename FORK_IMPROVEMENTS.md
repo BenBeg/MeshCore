@@ -56,6 +56,18 @@ For each target, the workflow captures PlatformIO's build report, ELF section si
 
 Full measurement protocol and result tables: [docs/RESOURCE_AUDIT.md](./docs/RESOURCE_AUDIT.md).
 
+## Development log — target-specific resource instrumentation (2026-11-27)
+
+**Changes committed:** `3dd56a8c` adds opt-in serial footprint diagnostics to `examples/simple_repeater/main.cpp`; `a3b3359c` adds the bench-only `SenseCap_Solar_repeater_resource_audit` PlatformIO environment; `23b44fd0` adds that instrumented image to the PR resource-audit build; `4b10fef5`, `45df8642`, `d699ab53` and `b1400233` document the measurement procedure, linker memory regions and four-image result table.
+
+**What the diagnostics measure:** target-compiler `sizeof` values for `MyMesh`, `ClientInfo`, `ClientACL`, `RoomPostInfo`, `mesh::Packet` and `StaticPoolPacketManager`; the Room post cache; one ACL client array; all 36 packet objects; and the backing arrays for the three packet queues. The diagnostic is guarded by `RESOURCE_AUDIT` and does not add serial output to the production image.
+
+**Important linker finding:** the ExtraFS linker script reserves an application FLASH region of 708,608 bytes and an application RAM region of 237,568 bytes. The latter is the usable RAM region defined for the application by this linker script, not the nRF52840's full 256 KB physical SRAM. This distinction is now recorded in `docs/RESOURCE_AUDIT.md`.
+
+**CI observation:** a prior native run on commit `df6f04f9` passed 80/80 tests. A later run on `bcbd534a` reported 80 successes and one test compile failure (`test_atomic_slot_recovery` included `unity.h`, which is unavailable in the GoogleTest native harness). The current branch version of that test includes `gtest/gtest.h`, but this correction and the new resource-audit targets still require a fresh run. The latest retrieved Actions list did not contain a run for the current branch head; no build sizes or object-size figures are claimed yet.
+
+**Next gate:** trigger the PR Build Check workflow on the current branch, inspect all four resource images and the serial diagnostics, then add measured flash/static RAM values to `docs/RESOURCE_AUDIT.md`. Runtime free heap, stack high-water marks, packet-pool peaks and three-device load tests remain separate work.
+
 ## Verification status
 
 - **Passed:** native unit tests 80/80 and all 16 firmware targets on code commit `524fce7c21009c3e4f029f5d08a10a187cab0816`. [Native run](https://github.com/BenBeg/MeshCore/actions/runs/46082374667) · [Firmware matrix](https://github.com/BenBeg/MeshCore/actions/runs/46082374675).
