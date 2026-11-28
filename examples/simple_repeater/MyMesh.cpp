@@ -5,6 +5,10 @@
 #include <new>
 #include <algorithm>
 
+#if defined(RESOURCE_AUDIT) && defined(NRF52_PLATFORM)
+  #include <task.h>
+#endif
+
 /* ------------------------------ Config -------------------------------- */
 
 #ifndef LORA_FREQ
@@ -2147,7 +2151,13 @@ void MyMesh::printResourceRuntimeStats() {
   Serial.print(" tx_queue_peak=");
   Serial.print(manager->getAuditPeakOutbound());
   Serial.print(" rx_queue_peak=");
-  Serial.println(manager->getAuditPeakInbound());
+  Serial.print(manager->getAuditPeakInbound());
+#if defined(NRF52_PLATFORM)
+  Serial.print(" loop_stack_min_free_bytes=");
+  Serial.println(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t));
+#else
+  Serial.println();
+#endif
 }
 #endif
 
