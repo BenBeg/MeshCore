@@ -1,6 +1,6 @@
 # Room Storage Failure-Injection Plan
 
-Status: the host harness exercises the same shared Room journal append/compaction transactions, atomic ACL inactive-slot write transaction, and ACL clear ordering helper used by firmware, through a deterministic fake filesystem. Journal tests cover operation failures and short writes at every header/record write boundary. ACL write tests cover inactive-slot removal/open, short header/record writes, flush, close and read-back failures while asserting that the active ACL slot is unchanged. ACL clear tests verify that the empty-generation commit callback precedes RAM clearing and stale-file retirement, and that failed commit/cleanup paths preserve the appropriate files. ACL load/migration/slot selection, identity/ExtraFS transaction injection and physical power-loss tests remain outstanding. No hardware fault injection has been performed.
+Status: native tests exercise production-shared Room journal scanning/append/compaction, ACL inactive-slot write ordering, ACL clear ordering, and ACL slot-selection/recovery policy. The ACL recovery tests cover valid-slot selection, wrap-safe generation ordering, retrying the older validated slot when the preferred slot fails its second read, and invalid-slot handling. They test the shared policy helper, not the complete production filesystem load path. ACL migration, end-to-end reboot recovery, identity/ExtraFS transaction injection and physical power-loss tests remain outstanding. The native test source now uses the repository's GoogleTest harness. No hardware fault injection has been performed.
 
 ## Scope
 
@@ -81,7 +81,7 @@ A test passes only when observed behavior matches the expected recovery and the 
 
 ## Execution order
 
-1. Extend the fake filesystem to cover ACL slot selection, legacy migration, empty-generation clear and old-slot retirement using production-shared transaction code.
+1. Complete production-integrated ACL slot load/fallback and legacy migration tests, including reboot/slot-selection recovery.
 2. Add production-shared identity write/read-back tests and SafeRoomExtraFS blank/nonblank mount tests.
 3. Run every automated J/A/I/F case under native CI; include short writes at each byte boundary for fixed-size journal/ACL records and headers.
 4. Add randomized reset/failure sequences and run them repeatedly.
