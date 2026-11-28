@@ -37,6 +37,17 @@ Record:
 
 Use PlatformIO's final build summary and `arm-none-eabi-size -A` output. Do not add the external QSPI filesystem capacity to available MCU RAM or to the internal application flash budget. Confirm the linker script's actual memory regions before calculating headroom.
 
+## Source-level RAM inventory (preliminary, not a measurement)
+
+A first source inspection identifies the main fixed-memory costs that the ELF report must confirm:
+
+- **Second Room ACL:** `MyMesh` owns both the original `ClientACL acl` and a separate `ClientACL room_acl`. Each ACL contains `ClientInfo clients[MAX_CLIENTS]`; the default `MAX_CLIENTS` is 32. The additional fixed storage is therefore `32 × sizeof(ClientInfo)`, before the Room ACL's own runtime allocations.
+- **Room post cache:** `MyMesh` contains `RoomPostInfo room_posts[ROOM_MAX_UNSYNCED_POSTS]`; the default is 32. Each entry contains an author identity, two 32-bit values plus a 32-bit timestamp, and a 152-byte text array. The exact footprint is `32 × sizeof(RoomPostInfo)`; compiler padding and the exact identity layout must be taken from the target ELF.
+- **Second peer-index array:** the Room service adds `room_matching_peer_indexes[MAX_CLIENTS]` alongside the existing Repeater matching array. At the default 32 clients and 32-bit `int`, this is another 128 bytes.
+- **Packet pool increase:** when `ROOM_EXTRA_FS` is enabled, the Repeater's `StaticPoolPacketManager` is constructed with 36 packets instead of 32. Each packet has fixed path and payload arrays (`MAX_PATH_SIZE=64`, `MAX_PACKET_PAYLOAD=184`). The four additional packet objects plus their three queue-table entries increase dynamic pool/queue memory; exact target `sizeof(mesh::Packet)`, allocator overhead and total heap impact still need build/runtime confirmation.
+
+These observations show why the resource audit must not look only at firmware flash size. The Room service adds meaningful fixed RAM and heap pressure even though it shares the Repeater's radio and packet manager. Do not treat the formulas above as final byte counts; use the target compiler's ELF section report and runtime measurements for acceptance.
+
 ## Runtime measurements
 
 Build-time section sizes do not reveal heap fragmentation, worst-case stack use, or queue pressure. These require runtime instrumentation and hardware tests.
