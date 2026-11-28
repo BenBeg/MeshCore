@@ -121,7 +121,7 @@ void setup() {
   if (!store.load("_main", the_mesh.self_id)) {
     // Never replace an existing but unreadable Repeater identity: doing so
     // would silently orphan the deployed node from its existing contacts.
-    if (fs->exists("/_main.id")) {
+    if (store.exists("_main")) {
       Serial.println("FATAL: existing Repeater identity is invalid; refusing to replace it");
       halt();
     }
@@ -152,7 +152,7 @@ void setup() {
   mesh::LocalIdentity room_id;
   if (store.load("_room", room_id)) {
     room_identity_ready = true;
-  } else if (fs->exists("/_room.id")) {
+  } else if (store.exists("_room")) {
     // Preserve a damaged Room key file and its associated Room data for
     // recovery. Do not silently mint a new Room identity over it.
     Serial.println("WARNING: existing Room identity is invalid; preserving it and starting Repeater only");
