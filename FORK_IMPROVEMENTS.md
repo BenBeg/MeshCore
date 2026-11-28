@@ -68,6 +68,12 @@ Full measurement protocol and result tables: [docs/RESOURCE_AUDIT.md](./docs/RES
 
 **Next gate:** trigger the PR Build Check workflow on the current branch, inspect all four resource images and the serial diagnostics, then add measured flash/static RAM values to `docs/RESOURCE_AUDIT.md`. Runtime free heap, stack high-water marks, packet-pool peaks and three-device load tests remain separate work.
 
+## Development log — compiler stack-frame reporting (2026-11-27)
+
+**Changes:** `c15cb877` enables GCC `-fstack-usage` in the instrumented SenseCAP build; `cf4ce147` archives the generated `.su` reports with the resource-audit artifacts; `0061534d` documents how to interpret them.
+
+This adds a static stack-frame view to the audit without changing the production firmware target. The `.su` files can identify functions with unusually large frames and guide targeted runtime testing. They do not establish worst-case call-chain depth, interrupt nesting or actual stack high-water marks. Runtime validation remains mandatory.
+
 ## Verification status
 
 - **Passed:** native unit tests 80/80 and all 16 firmware targets on code commit `524fce7c21009c3e4f029f5d08a10a187cab0816`. [Native run](https://github.com/BenBeg/MeshCore/actions/runs/46082374667) · [Firmware matrix](https://github.com/BenBeg/MeshCore/actions/runs/46082374675).
