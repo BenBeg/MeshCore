@@ -35,9 +35,10 @@ The line counts are GitHub's per-file comparison totals; they are a measure of s
 
 This snapshot should be refreshed as the implementation changes materially, with the comparison base and head commit recorded each time so the totals remain reproducible.
 
+
 ## Development log — resource-audit tooling (2026-11-27)
 
-**Change:** added `.github/workflows/sensecap-resource-audit.yml` (commit `a4a27bd3b66b48d452eb07e4ff547d22e8d09789`).
+**Change:** added reproducible resource-audit build jobs to the existing `.github/workflows/pr-build-check.yml` (commit `10d4642ac53c45f71a95e7ed5b47610ea3d3eaf5`). A standalone workflow draft was removed so the audit runs under the already-established PR workflow.
 
 The audit is designed to build three comparable SenseCAP images and preserve their build outputs:
 
@@ -49,7 +50,9 @@ For each target, the workflow captures PlatformIO's build report, ELF section si
 
 **Important comparison detail:** upstream `main` still defines `SenseCap_Solar_repeater` as the stock Repeater. The fork repurposes that environment for the combined image and adds the ExtraFS linker layout. Therefore, the baseline must be built from the pinned upstream revision, while Room-only and combined images are built from the fork revision.
 
-**Status at this log entry:** workflow committed; no audit run or build-size result is yet available. Do not infer a pass from the workflow file existing. The first successful run and its artifacts will be reviewed and summarized here.
+**Status at this log entry:** PR workflow updated; no audit run or build-size result is yet available in the retrieved CI records. Do not infer a pass from the workflow change existing. The first successful run and its artifacts will be reviewed and summarized here.
+
+Full measurement protocol and result tables: [docs/RESOURCE_AUDIT.md](./docs/RESOURCE_AUDIT.md).
 
 ## Verification status
 
