@@ -38,7 +38,9 @@ A host-side fake filesystem is preferred for deterministic tests. Hardware power
 | J11 | Corrupt final appended record checksum | Recover preceding valid records; mark journal for compaction |
 | J12 | Truncate final appended record at every byte boundary | Recover preceding valid records; do not expose partial record |
 | J13 | Corrupt one base record or base checksum | Reject that slot and fall back to the other valid slot |
-| J14 | Both slots invalid | Start Room with an empty journal only after recording that prior Room posts were unrecoverable; Repeater must remain operational |
+| J14 | Both journal slots invalid or unreadable but at least one file exists | Preserve both files and disable Room; do not initialize an empty journal. Repeater remains operational |
+| J18 | Read failure while a full appended record remains in the file | Reject that slot and try the other validated generation; do not truncate the journal to a shorter prefix |
+| J19 | Both journal files absent on first-use ExtraFS | Initialize an empty journal; if initialization fails, disable Room and keep Repeater operational |
 | J15 | Fill journal to compaction threshold / filesystem full | Refuse new post without ACK; existing journal remains readable |
 | J16 | Generation rollover from 0xFFFFFFFF to 0 | Select generation 0 as newer than 0xFFFFFFFF |
 | J17 | Post sequence rollover from 0xFFFFFFFF to 0, including a journal whose first retained record is above 0x7FFFFFFF | Recover the latest sequence using wrap-safe serial arithmetic and initialize from the first retained record; next post must not reuse a sequence |
@@ -91,6 +93,6 @@ A test passes only when observed behavior matches the expected recovery and the 
 ## Current known limitations
 
 - The current production code has read-back verification for new appended records and for compacted journal base records.
-- The repository now shares journal append, compaction, slot verification, ACL inactive-slot write and ACL clear ordering transaction code between firmware and host tests. The fake filesystem injects operation failures and short writes; ACL load/migration/slot selection, full reboot recovery, identity, ExtraFS and hardware power-loss fault matrices remain outstanding.
+- The repository now shares journal append, compaction, slot verification, journal generation selection/fallback policy, ACL inactive-slot write and ACL clear ordering transaction code between firmware and host tests. The fake filesystem injects operation failures and short writes. The journal scanner now treats an appended-record read error as a slot failure rather than a damaged tail; startup preserves existing invalid/unreadable journal files and disables Room instead of creating an empty replacement. ACL load/migration, full reboot recovery, identity, ExtraFS and hardware power-loss fault matrices remain outstanding.
 - The CI green status verifies compilation and existing unit tests; it does not validate the failure matrix.
 - Power-loss atomicity, flash-controller behavior, and LittleFS behavior under real supply collapse remain unverified.
