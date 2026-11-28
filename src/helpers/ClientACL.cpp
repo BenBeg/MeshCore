@@ -212,8 +212,10 @@ void ClientACL::loadAtomic(FILESYSTEM* fs, const mesh::LocalIdentity& self_id) {
         if (!file) return false;
         bool ok = file.seek(sizeof(ACLSlotHeader));
         uint8_t record[ACL_RECORD_SIZE];
+        uint32_t payload_hash = 2166136261UL;
         for (uint16_t i = 0; ok && i < headers[slot].count; i++) {
           if (file.read(record, sizeof(record)) != sizeof(record)) { ok = false; break; }
+          payload_hash = aclHashUpdate(payload_hash, record, sizeof(record));
           ClientInfo& client = clients[num_clients];
           memset(&client, 0, sizeof(client));
           size_t p = 0;
@@ -228,6 +230,11 @@ void ClientACL::loadAtomic(FILESYSTEM* fs, const mesh::LocalIdentity& self_id) {
           client.id = mesh::Identity(pub_key);
           self_id.calcSharedSecret(client.shared_secret, pub_key);
           num_clients++;
+        }
+        if (ok) {
+          // The validation pass and this loading pass are separate reads.
+          // Recheck the payload so changed/corrupt bytes cannot be published.
+          ok = payload_hash == headers[slot].payload_hash && file.available() == 0;
         }
         file.close();
         if (ok) loaded_slot = slot;
