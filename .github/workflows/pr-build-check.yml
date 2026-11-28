@@ -118,6 +118,9 @@ jobs:
       - name: Build combined Repeater + Room image
         run: pio run -e SenseCap_Solar_repeater
 
+      - name: Build instrumented resource-audit image
+        run: pio run -e SenseCap_Solar_repeater_resource_audit
+
       - name: Capture fork images and ELF section sizes
         shell: bash
         run: |
@@ -125,7 +128,7 @@ jobs:
           SIZE_TOOL="$(find "$HOME/.platformio/packages" -type f -name arm-none-eabi-size -print -quit)"
           test -n "$SIZE_TOOL"
           mkdir -p audit-output
-          for ENV in SenseCap_Solar_room_server SenseCap_Solar_repeater; do
+          for ENV in SenseCap_Solar_room_server SenseCap_Solar_repeater SenseCap_Solar_repeater_resource_audit; do
             ELF="$(find ".pio/build/$ENV" -type f -name '*.elf' -print -quit)"
             test -n "$ELF"
             BIN="$(find ".pio/build/$ENV" -type f -name '*.bin' -print -quit)"
