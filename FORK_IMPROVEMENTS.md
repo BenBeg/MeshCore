@@ -172,3 +172,10 @@ Inspected the exact pinned Adafruit nRF52 core revision used by this PlatformIO 
 The same source inspection found the selected FreeRTOS memory manager is `heap_3`, which delegates allocation to newlib malloc. Although FreeRTOS `portable.h` declares `xPortGetFreeHeapSize()` and `xPortGetMinimumEverFreeHeapSize()`, `heap_3.c` does not implement those functions. The diagnostic will not call these unavailable APIs. Reliable free-heap/largest-block measurement remains open and needs a compatible newlib allocator-statistics method or explicit allocation accounting.
 
 **Verification:** latest diagnostic/stack instrumentation commit is pending CI. No device has been flashed; no runtime sample has yet been captured.
+
+
+## Development log — aggregate newlib heap telemetry (2026-11-28)
+
+The pinned nRF52 core source confirms `heap_3.c` wraps allocation through `__real_malloc`/`__real_free`, and task creation uses the same allocator for task control blocks and task stacks. The resource-audit sample now attempts to report newlib `mallinfo()` aggregate arena, allocated and free byte totals. These are not largest-contiguous-block measurements and do not prove a future allocation of a given size will succeed; fragmentation remains a limitation. The unimplemented FreeRTOS `xPortGetFreeHeapSize()` declarations remain unused.
+
+**Verification:** compile/link validation is pending CI for the latest commit; runtime plausibility still requires a serial capture on the P1-Pro. If the toolchain does not expose the expected `mallinfo` fields, remove or adapt this diagnostic rather than weakening the production build. No hardware has been flashed.
