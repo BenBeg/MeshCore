@@ -84,6 +84,19 @@ protected:
    */
   virtual void getPeerSharedSecret(uint8_t* dest_secret, int peer_idx) { }
 
+  // Identity-aware dispatch hooks. Existing single-identity Mesh applications
+  // retain their current behavior through these default implementations.
+  virtual int getLocalIdentityCount() const { return 1; }
+  virtual LocalIdentity* getLocalIdentity(int idx) { return idx == 0 ? &self_id : NULL; }
+  virtual int searchPeersByHashForIdentity(const LocalIdentity& local_id, const uint8_t* hash) {
+    (void)local_id;
+    return searchPeersByHash(hash);
+  }
+  virtual void getPeerSharedSecretForIdentity(const LocalIdentity& local_id, uint8_t* dest_secret, int peer_idx) {
+    (void)local_id;
+    getPeerSharedSecret(dest_secret, peer_idx);
+  }
+
   /**
    * \brief  A (now decrypted) data packet has been received (by a known peer).
    *         NOTE: these can be received multiple times (per sender/msg-id), via different routes
@@ -93,6 +106,10 @@ protected:
    * \param  data   decrypted data from payload
   */
   virtual void onPeerDataRecv(Packet* packet, uint8_t type, int sender_idx, const uint8_t* secret, uint8_t* data, size_t len) { }
+  virtual void onPeerDataRecvForIdentity(Packet* packet, const LocalIdentity& local_id, uint8_t type, int sender_idx, const uint8_t* secret, uint8_t* data, size_t len) {
+    (void)local_id;
+    onPeerDataRecv(packet, type, sender_idx, secret, data, len);
+  }
 
   /**
    * \brief  A TRACE packet has been received. (and has reached the end of its given path)
@@ -114,6 +131,10 @@ protected:
    * \returns   true, if path was accepted and that reciprocal path should be sent
   */
   virtual bool onPeerPathRecv(Packet* packet, int sender_idx, const uint8_t* secret, uint8_t* path, uint8_t path_len, uint8_t extra_type, uint8_t* extra, uint8_t extra_len) { return false; }
+  virtual bool onPeerPathRecvForIdentity(Packet* packet, const LocalIdentity& local_id, int sender_idx, const uint8_t* secret, uint8_t* path, uint8_t path_len, uint8_t extra_type, uint8_t* extra, uint8_t extra_len) {
+    (void)local_id;
+    return onPeerPathRecv(packet, sender_idx, secret, path, path_len, extra_type, extra, extra_len);
+  }
 
   /**
    * \brief  A new incoming Advertisement has been received.
@@ -128,6 +149,10 @@ protected:
    * \param  sender  public key provided by sender
   */
   virtual void onAnonDataRecv(Packet* packet, const uint8_t* secret, const Identity& sender, uint8_t* data, size_t len) { }
+  virtual void onAnonDataRecvForIdentity(Packet* packet, const LocalIdentity& local_id, const uint8_t* secret, const Identity& sender, uint8_t* data, size_t len) {
+    (void)local_id;
+    onAnonDataRecv(packet, secret, sender, data, len);
+  }
 
   /**
    * \brief  A path TO 'sender' has been received. (also with optional 'extra' data encoded)
@@ -184,6 +209,7 @@ public:
 
   Packet* createAdvert(const LocalIdentity& id, const uint8_t* app_data=NULL, size_t app_data_len=0);
   Packet* createDatagram(uint8_t type, const Identity& dest, const uint8_t* secret, const uint8_t* data, size_t len);
+  Packet* createDatagram(const LocalIdentity& sender, uint8_t type, const Identity& dest, const uint8_t* secret, const uint8_t* data, size_t len);
   Packet* createAnonDatagram(uint8_t type, const LocalIdentity& sender, const Identity& dest, const uint8_t* secret, const uint8_t* data, size_t data_len);
   Packet* createGroupDatagram(uint8_t type, const GroupChannel& channel, const uint8_t* data, size_t data_len);
   Packet* createAck(const uint8_t* ack, uint8_t len);
@@ -192,6 +218,8 @@ public:
   Packet* createMultiAck(uint32_t ack_crc, uint8_t remaining) { return createMultiAck((uint8_t *)&ack_crc, 4, remaining); }
   Packet* createPathReturn(const uint8_t* dest_hash, const uint8_t* secret, const uint8_t* path, uint8_t path_len, uint8_t extra_type, const uint8_t*extra, size_t extra_len);
   Packet* createPathReturn(const Identity& dest, const uint8_t* secret, const uint8_t* path, uint8_t path_len, uint8_t extra_type, const uint8_t*extra, size_t extra_len);
+  Packet* createPathReturn(const LocalIdentity& sender, const uint8_t* dest_hash, const uint8_t* secret, const uint8_t* path, uint8_t path_len, uint8_t extra_type, const uint8_t*extra, size_t extra_len);
+  Packet* createPathReturn(const LocalIdentity& sender, const Identity& dest, const uint8_t* secret, const uint8_t* path, uint8_t path_len, uint8_t extra_type, const uint8_t*extra, size_t extra_len);
   Packet* createRawData(const uint8_t* data, size_t len);
   Packet* createTrace(uint32_t tag, uint32_t auth_code, uint8_t flags = 0);
   Packet* createControlData(const uint8_t* data, size_t len);
@@ -206,11 +234,14 @@ public:
    * \param transport_codes   array of 2 codes to attach to packet
   */
   void sendFlood(Packet* packet, uint16_t* transport_codes, uint32_t delay_millis=0, uint8_t path_hash_size=1);
+  void sendFloodPriority(Packet* packet, uint32_t delay_millis, uint8_t path_hash_size, uint8_t priority);
+  void sendFloodPriority(Packet* packet, uint16_t* transport_codes, uint32_t delay_millis, uint8_t path_hash_size, uint8_t priority);
 
   /**
    * \brief  send a locally-generated Packet with Direct routing
   */
   void sendDirect(Packet* packet, const uint8_t* path, uint8_t path_len, uint32_t delay_millis=0);
+  void sendDirectPriority(Packet* packet, const uint8_t* path, uint8_t path_len, uint32_t delay_millis, uint8_t priority);
 
   /**
    * \brief  send a locally-generated Packet to just neighbor nodes (zero hops)
@@ -222,6 +253,8 @@ public:
    * \param transport_codes   array of 2 codes to attach to packet
   */
   void sendZeroHop(Packet* packet, uint16_t* transport_codes, uint32_t delay_millis=0);
+  void sendZeroHopPriority(Packet* packet, uint32_t delay_millis, uint8_t priority);
+  void sendZeroHopPriority(Packet* packet, uint16_t* transport_codes, uint32_t delay_millis, uint8_t priority);
 
 };
 

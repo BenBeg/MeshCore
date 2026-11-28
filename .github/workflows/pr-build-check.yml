@@ -2,6 +2,7 @@ name: PR Build Check
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main, dev]
     paths:
       - 'src/**'
@@ -17,35 +18,26 @@ on:
       - 'variants/**'
       - 'platformio.ini'
       - '.github/workflows/pr-build-check.yml'
+  workflow_dispatch:
+    inputs:
+      full_matrix:
+        description: 'Run the complete cross-platform build matrix'
+        required: true
+        type: boolean
+        default: true
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
+      # Run the full matrix for the SenseCAP integration branch even while its PR is draft.
       matrix:
-        environment:
-          # ESP32-S3 (most common platform)
-          - Heltec_v3_companion_radio_ble
-          - Heltec_v3_repeater
-          - Heltec_v3_room_server
-          # nRF52
-          - RAK_4631_companion_radio_ble
-          - RAK_4631_companion_radio_ethernet
-          - RAK_4631_repeater
-          - RAK_4631_repeater_ethernet
-          - RAK_4631_room_server
-          - RAK_4631_room_server_ethernet
-          # RP2040
-          - PicoW_repeater
-          # STM32
-          - wio-e5-mini_repeater
-          # ESP32-C6
-          - LilyGo_Tlora_C6_repeater_
-          # LR1110 (nRF52)
-          - wio_wm1110_repeater
-          # SX1276 (ESP32)
-          - Tbeam_SX1276_repeater
+        environment: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.full_matrix) || (github.event_name == 'pull_request' && (github.event.action == 'ready_for_review' || github.head_ref == 'feature/sensecap-repeater-room'))) && fromJSON('["Heltec_v3_companion_radio_ble","Heltec_v3_repeater","Heltec_v3_room_server","RAK_4631_companion_radio_ble","RAK_4631_companion_radio_ethernet","RAK_4631_repeater","RAK_4631_repeater_ethernet","RAK_4631_room_server","RAK_4631_room_server_ethernet","SenseCap_Solar_repeater","ThinkNode_M5_companion_radio_ble","PicoW_repeater","wio-e5-mini_repeater","LilyGo_Tlora_C6_repeater_","wio_wm1110_repeater","Tbeam_SX1276_repeater"]') || fromJSON('["SenseCap_Solar_repeater"]') }}
 
     steps:
       - name: Clone Repo
@@ -56,3 +48,136 @@ jobs:
 
       - name: Build ${{ matrix.environment }}
         run: pio run -e ${{ matrix.environment }}
+
+  resource-stock-repeater:
+    name: Resource audit — upstream stock SenseCAP Repeater
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout pinned upstream baseline
+        uses: actions/checkout@v6
+        with:
+          ref: 75b04ef06def54b348400cb1b138afb6749ffd4f
+
+      - name: Setup Build Environment
+        uses: ./.github/actions/setup-build-environment
+
+      - name: Build stock SenseCAP Repeater
+        run: pio run -e SenseCap_Solar_repeater
+
+      - name: Capture stock image and ELF section sizes
+        shell: bash
+        run: |
+          set -euo pipefail
+          SIZE_TOOL="$(find "$HOME/.platformio/packages" -type f -name arm-none-eabi-size -print -quit)"
+          ELF="$(find .pio/build/SenseCap_Solar_repeater -type f -name '*.elf' -print -quit)"
+          test -n "$SIZE_TOOL" && test -n "$ELF"
+          mkdir -p audit-output
+          BIN="$(find .pio/build/SenseCap_Solar_repeater -type f -name '*.bin' -print -quit)"
+          if [ -z "$BIN" ]; then
+            OBJCOPY_TOOL="$(find "$HOME/.platformio/packages" -type f -name arm-none-eabi-objcopy -print -quit)"
+            test -n "$OBJCOPY_TOOL"
+            BIN="audit-output/stock-repeater-firmware.bin"
+            "$OBJCOPY_TOOL" -O binary "$ELF" "$BIN"
+          fi
+          test -s "$BIN"
+          {
+            echo "## Stock Repeater size summary"
+            echo
+            echo "Firmware BIN: $(stat -c%s "$BIN") bytes"
+            echo
+            echo "ELF text/data/bss:"
+            "$SIZE_TOOL" -B "$ELF"
+            echo
+            echo "ELF sections:"
+            "$SIZE_TOOL" -A "$ELF"
+            echo
+            echo "ELF load segments:"
+            READELF_TOOL="$(command -v arm-none-eabi-readelf || true)"
+            if [ -n "$READELF_TOOL" ]; then
+              "$READELF_TOOL" -l "$ELF"
+            else
+              echo "arm-none-eabi-readelf not available; ELF section report above remains authoritative for this step."
+            fi
+          } | tee audit-output/stock-repeater-size-report.txt
+          "$SIZE_TOOL" -A "$ELF" > audit-output/stock-repeater-sections.txt
+          cp "$ELF" audit-output/stock-repeater.elf
+          while IFS= read -r FILE; do
+            cp "$FILE" "audit-output/stock-repeater-$(basename "$FILE")"
+          done < <(find .pio/build/SenseCap_Solar_repeater -type f \( -name '*.bin' -o -name '*.hex' -o -name '*.map' -o -name '*.su' \))
+
+      - name: Upload stock Repeater resource report
+        uses: actions/upload-artifact@v4
+        with:
+          name: sensecap-stock-repeater-resource-report
+          path: audit-output/
+
+  resource-fork-images:
+    name: Resource audit — fork Room-only and combined images
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout pull request revision
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Setup Build Environment
+        uses: ./.github/actions/setup-build-environment
+
+      - name: Build Room-only image
+        run: pio run -e SenseCap_Solar_room_server
+
+      - name: Build combined Repeater + Room image
+        run: pio run -e SenseCap_Solar_repeater
+
+      - name: Build instrumented resource-audit image
+        run: pio run -e SenseCap_Solar_repeater_resource_audit
+
+      - name: Capture fork images and ELF section sizes
+        shell: bash
+        run: |
+          set -euo pipefail
+          SIZE_TOOL="$(find "$HOME/.platformio/packages" -type f -name arm-none-eabi-size -print -quit)"
+          test -n "$SIZE_TOOL"
+          mkdir -p audit-output
+          for ENV in SenseCap_Solar_room_server SenseCap_Solar_repeater SenseCap_Solar_repeater_resource_audit; do
+            ELF="$(find ".pio/build/$ENV" -type f -name '*.elf' -print -quit)"
+            test -n "$ELF"
+            BIN="$(find ".pio/build/$ENV" -type f -name '*.bin' -print -quit)"
+            if [ -z "$BIN" ]; then
+              OBJCOPY_TOOL="$(find "$HOME/.platformio/packages" -type f -name arm-none-eabi-objcopy -print -quit)"
+              test -n "$OBJCOPY_TOOL"
+              BIN="audit-output/$ENV-firmware.bin"
+              "$OBJCOPY_TOOL" -O binary "$ELF" "$BIN"
+            fi
+            test -s "$BIN"
+            {
+              echo "## $ENV size summary"
+              echo
+              echo "Firmware BIN: $(stat -c%s "$BIN") bytes"
+              echo
+              echo "ELF text/data/bss:"
+              "$SIZE_TOOL" -B "$ELF"
+              echo
+              echo "ELF sections:"
+              "$SIZE_TOOL" -A "$ELF"
+              echo
+              echo "ELF load segments:"
+              READELF_TOOL="$(command -v arm-none-eabi-readelf || true)"
+              if [ -n "$READELF_TOOL" ]; then
+                "$READELF_TOOL" -l "$ELF"
+              else
+                echo "arm-none-eabi-readelf not available; ELF section report above remains authoritative for this step."
+              fi
+            } | tee "audit-output/$ENV-size-report.txt"
+            "$SIZE_TOOL" -A "$ELF" > "audit-output/$ENV-sections.txt"
+            cp "$ELF" "audit-output/$ENV.elf"
+            while IFS= read -r FILE; do
+              cp "$FILE" "audit-output/$ENV-$(basename "$FILE")"
+            done < <(find ".pio/build/$ENV" -type f \( -name '*.bin' -o -name '*.hex' -o -name '*.map' -o -name '*.su' \))
+          done
+
+      - name: Upload fork resource reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: sensecap-fork-resource-reports
+          path: audit-output/

@@ -108,10 +108,17 @@ bool LocalIdentity::validatePrivateKey(const uint8_t prv[64]) {
     return false;
 }
 
+bool LocalIdentity::isValid() const {
+  uint8_t derived_pub[PUB_KEY_SIZE];
+  ed25519_derive_pub(derived_pub, prv_key);
+  return derived_pub[0] != 0x00 && derived_pub[0] != 0xFF &&
+         memcmp(derived_pub, pub_key, PUB_KEY_SIZE) == 0;
+}
+
 bool LocalIdentity::readFrom(Stream& s) {
   bool success = (s.readBytes(pub_key, PUB_KEY_SIZE) == PUB_KEY_SIZE);
   success = success && (s.readBytes(prv_key, PRV_KEY_SIZE) == PRV_KEY_SIZE);
-  return success;
+  return success && isValid();
 }
 
 bool LocalIdentity::writeTo(Stream& s) const {

@@ -2,6 +2,40 @@
 #include <Mesh.h>
 
 #include "MyMesh.h"
+#if defined(ROOM_EXTRA_FS)
+  #include <CustomLFS.h>
+
+  // CustomLFS 0.2.3 formats (erases) its entire region whenever mount fails.
+  // That is unsafe for persistent Room data: a transient/corrupt mount must
+  // not silently destroy existing posts and ACLs. Only format a demonstrably
+  // erased (all 0xFF) region on first provisioning; otherwise fail closed and
+  // let the Repeater start without the Room service.
+  class SafeRoomExtraFS : public CustomLFS {
+  public:
+    using CustomLFS::CustomLFS;
+
+    bool begin() override {
+      if (Adafruit_LittleFS::begin()) return true;
+
+      uint8_t buffer[128];
+      const uint32_t start = getFlashAddr();
+      const uint32_t size = getFlashSize();
+      for (uint32_t offset = 0; offset < size; offset += sizeof(buffer)) {
+        uint32_t chunk = size - offset;
+        if (chunk > sizeof(buffer)) chunk = sizeof(buffer);
+        if (flash_nrf5x_read(buffer, start + offset, chunk) <= 0) return false;
+        for (uint32_t i = 0; i < chunk; i++) {
+          if (buffer[i] != 0xFF) return false;  // existing/corrupt data: preserve it
+        }
+      }
+
+      if (!formatRegion()) return false;  // blank first-use region only
+      return Adafruit_LittleFS::begin();
+    }
+  };
+
+  SafeRoomExtraFS RoomExtraFS(0xD4000, 0x19000, 128);
+#endif
 
 #ifdef DISPLAY_CLASS
   #include "UITask.h"
@@ -38,6 +72,29 @@ static unsigned long userBtnDownAt = 0;
 void setup() {
   Serial.begin(115200);
   delay(1000);
+
+#if defined(RESOURCE_AUDIT) && defined(ROOM_EXTRA_FS)
+  Serial.println("=== SENSECAP RESOURCE AUDIT: COMPILE-TIME FOOTPRINT ===");
+  Serial.print("sizeof(MyMesh)="); Serial.println(sizeof(MyMesh));
+  Serial.print("sizeof(ClientInfo)="); Serial.println(sizeof(ClientInfo));
+  Serial.print("sizeof(ClientACL)="); Serial.println(sizeof(ClientACL));
+  Serial.print("sizeof(RoomPostInfo)="); Serial.println(sizeof(RoomPostInfo));
+  Serial.print("room_post_cache_bytes=");
+  Serial.println(sizeof(RoomPostInfo) * ROOM_MAX_UNSYNCED_POSTS);
+  Serial.print("one_acl_client_array_bytes=");
+  Serial.println(sizeof(ClientInfo) * MAX_CLIENTS);
+  Serial.print("sizeof(mesh::Packet)="); Serial.println(sizeof(mesh::Packet));
+  Serial.print("packet_pool_objects=36");
+  Serial.println();
+  Serial.print("packet_pool_object_bytes=");
+  Serial.println(sizeof(mesh::Packet) * 36);
+  Serial.print("sizeof(StaticPoolPacketManager)=");
+  Serial.println(sizeof(StaticPoolPacketManager));
+  Serial.print("packet_queue_backing_array_bytes=");
+  Serial.println(3 * 36 * (sizeof(mesh::Packet*) + sizeof(uint8_t) + sizeof(uint32_t)));
+  Serial.println("NOTE: excludes allocator metadata, runtime heap fragmentation and stack usage.");
+  Serial.println("=== END RESOURCE AUDIT ===");
+#endif
 
   board.begin();
 
@@ -85,17 +142,68 @@ void setup() {
   #error "need to define filesystem"
 #endif
   if (!store.load("_main", the_mesh.self_id)) {
+    // Never replace an existing but unreadable Repeater identity: doing so
+    // would silently orphan the deployed node from its existing contacts.
+    if (store.exists("_main")) {
+      Serial.println("FATAL: existing Repeater identity is invalid; refusing to replace it");
+      halt();
+    }
+
     MESH_DEBUG_PRINTLN("Generating new keypair");
     the_mesh.self_id = radio_new_identity();   // create new random identity
     int count = 0;
-    while (count < 10 && (the_mesh.self_id.pub_key[0] == 0x00 || the_mesh.self_id.pub_key[0] == 0xFF)) {  // reserved id hashes
+    while (count < 10 && (the_mesh.self_id.pub_key[0] == 0x00 || the_mesh.self_id.pub_key[0] == 0xFF)) {
       the_mesh.self_id = radio_new_identity(); count++;
     }
-    store.save("_main", the_mesh.self_id);
+    if (!store.save("_main", the_mesh.self_id)) {
+      Serial.println("FATAL: unable to save Repeater identity");
+      halt();
+    }
+    mesh::LocalIdentity verify_main_id;
+    if (!store.load("_main", verify_main_id) || !verify_main_id.matches(the_mesh.self_id)) {
+      Serial.println("FATAL: Repeater identity read-back verification failed");
+      halt();
+    }
+    the_mesh.self_id = verify_main_id;
   }
 
   Serial.print("Repeater ID: ");
   mesh::Utils::printHex(Serial, the_mesh.self_id.pub_key, PUB_KEY_SIZE); Serial.println();
+
+#if defined(ROOM_EXTRA_FS)
+  bool room_identity_ready = false;
+  mesh::LocalIdentity room_id;
+  if (store.load("_room", room_id)) {
+    room_identity_ready = true;
+  } else if (store.exists("_room")) {
+    // Preserve a damaged Room key file and its associated Room data for
+    // recovery. Do not silently mint a new Room identity over it.
+    Serial.println("WARNING: existing Room identity is invalid; preserving it and starting Repeater only");
+  } else {
+    room_id = radio_new_identity();
+    int count = 0;
+    while (count < 10 && (room_id.pub_key[0] == 0x00 || room_id.pub_key[0] == 0xFF)) {
+      room_id = radio_new_identity();
+      count++;
+    }
+    if (store.save("_room", room_id)) {
+      mesh::LocalIdentity verify_room_id;
+      if (store.load("_room", verify_room_id) && verify_room_id.matches(room_id)) {
+        room_id = verify_room_id;
+        room_identity_ready = true;
+      } else {
+        Serial.println("WARNING: Room identity read-back verification failed; starting Repeater only");
+      }
+    } else {
+      Serial.println("WARNING: unable to save Room identity; starting Repeater only");
+    }
+  }
+  if (room_identity_ready) {
+    the_mesh.setRoomIdentity(room_id);
+    Serial.print("Room ID: ");
+    mesh::Utils::printHex(Serial, the_mesh.getRoomIdentity().pub_key, PUB_KEY_SIZE); Serial.println();
+  }
+#endif
 
   command[0] = 0;
 #ifdef ETHERNET_ENABLED
@@ -104,7 +212,19 @@ void setup() {
 
   sensors.begin();
 
+#if defined(ROOM_EXTRA_FS)
+  FILESYSTEM* room_fs = NULL;
+  if (room_identity_ready && RoomExtraFS.begin()) {
+    room_fs = &RoomExtraFS;
+  } else if (!room_identity_ready) {
+    Serial.println("WARNING: Room identity unavailable; Repeater will run without Room service");
+  } else {
+    Serial.println("WARNING: Room ExtraFS unavailable; Repeater will run without Room service");
+  }
+  the_mesh.begin(fs, room_fs);
+#else
   the_mesh.begin(fs);
+#endif
 
 #ifdef DISPLAY_CLASS
   ui_task.begin(the_mesh.getNodePrefs(), FIRMWARE_BUILD_DATE, FIRMWARE_VERSION);
@@ -117,12 +237,18 @@ void setup() {
   // send out initial zero hop Advertisement to the mesh
 #if ENABLE_ADVERT_ON_BOOT == 1
   the_mesh.sendSelfAdvertisement(16000, false);
+#if defined(ROOM_EXTRA_FS)
+  the_mesh.sendRoomSelfAdvertisement(16500, false);
+#endif
 #endif
 
   board.onBootComplete();
 }
 
 void loop() {
+#if defined(RESOURCE_AUDIT)
+  static unsigned long next_resource_report = 10000;
+#endif
   // Handle Serial CLI
   int len = strlen(command);
   // `command` must stay NUL-terminated within its bounds. If it ever isn't,
@@ -201,6 +327,13 @@ void loop() {
   ui_task.loop();
 #endif
   rtc_clock.tick();
+
+#if defined(RESOURCE_AUDIT)
+  if ((int32_t)(millis() - next_resource_report) >= 0) {
+    the_mesh.printResourceRuntimeStats();
+    next_resource_report = millis() + 60000;
+  }
+#endif
 
 #ifdef HAS_EXTERNAL_WATCHDOG
   external_watchdog.loop();

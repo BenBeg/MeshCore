@@ -86,6 +86,7 @@ public:
    * \returns true, if the private key is valid for login.
   */
   static bool validatePrivateKey(const uint8_t prv[64]);
+  bool isValid() const;
 
   bool readFrom(Stream& s);
   bool writeTo(Stream& s) const;

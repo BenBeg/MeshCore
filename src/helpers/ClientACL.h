@@ -49,14 +49,26 @@ class ClientACL {
   FILESYSTEM* _fs;
   ClientInfo clients[MAX_CLIENTS];
   int num_clients;
+  const char* _storage_path;
+  uint32_t _atomic_generation;
+  uint8_t _atomic_slot;
+  bool _atomic_mode;
 
 public:
-  ClientACL() { 
+  ClientACL() : _storage_path("/s_contacts"), _atomic_generation(0), _atomic_slot(0), _atomic_mode(false) {
     memset(clients, 0, sizeof(clients));
     num_clients = 0;
   }
+
+  // Select a separate persistence file for services with independent identities.
+  // The default remains /s_contacts for backwards compatibility.
+  void setStoragePath(const char* path) {
+    _storage_path = (path && path[0]) ? path : "/s_contacts";
+  }
   void load(FILESYSTEM* _fs, const mesh::LocalIdentity& self_id);
-  void save(FILESYSTEM* _fs, bool (*filter)(ClientInfo*)=NULL);
+  bool save(FILESYSTEM* _fs, bool (*filter)(ClientInfo*)=NULL);
+  void loadAtomic(FILESYSTEM* fs, const mesh::LocalIdentity& self_id);
+  bool saveAtomic(FILESYSTEM* fs, bool (*filter)(ClientInfo*)=NULL);
   bool clear();
 
   ClientInfo* getClient(const uint8_t* pubkey, int key_len);

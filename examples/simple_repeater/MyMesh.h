@@ -78,14 +78,36 @@ struct NeighbourInfo {
 
 #define PACKET_LOG_FILE  "/packet_log"
 
+#ifndef ROOM_MAX_UNSYNCED_POSTS
+  #define ROOM_MAX_UNSYNCED_POSTS 32
+#endif
+#define ROOM_MAX_POST_TEXT_LEN (160-9)
+#define ROOM_SERVER_RESPONSE_DELAY 300
+#define ROOM_TXT_ACK_DELAY 200
+#define ROOM_TX_PRIORITY 4  // lower priority than Repeater forwarding/control (queue selects the lowest value)
+#define ROOM_MAX_PENDING_TX 4
+#define ROOM_RESERVED_FREE_PACKETS 4
+
+struct RoomPostInfo {
+  mesh::Identity author;
+  uint32_t sequence;
+  uint32_t post_timestamp;
+  char text[ROOM_MAX_POST_TEXT_LEN + 1];
+};
+
 class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   FILESYSTEM* _fs;
+  FILESYSTEM* _room_fs;
+  bool room_service_enabled;
   uint32_t last_millis;
   uint64_t uptime_millis;
   unsigned long next_local_advert, next_flood_advert;
+  unsigned long room_next_local_advert, room_next_flood_advert;
   bool _logging;
   NodePrefs _prefs;
   ClientACL  acl;
+  ClientACL room_acl;
+  mesh::LocalIdentity room_id;
   CommonCLI _cli;
   uint8_t reply_data[MAX_PACKET_PAYLOAD];
   uint8_t reply_path[MAX_PATH_SIZE];
@@ -110,6 +132,14 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   uint8_t pending_sf;
   uint8_t pending_cr;
   int  matching_peer_indexes[MAX_CLIENTS];
+  int  room_matching_peer_indexes[MAX_CLIENTS];
+  unsigned long room_dirty_contacts_expiry, room_next_push;
+  uint16_t room_num_posted, room_num_post_pushes;
+  int room_next_client_idx, room_next_post_idx;
+  uint8_t room_post_count, room_journal_slot;
+  uint32_t room_journal_generation, room_next_sequence, room_journal_size;
+  bool room_journal_ready, room_journal_needs_compact;
+  RoomPostInfo room_posts[ROOM_MAX_UNSYNCED_POSTS];
 #if defined(WITH_RS232_BRIDGE)
   RS232Bridge bridge;
 #elif defined(WITH_ESPNOW_BRIDGE)
@@ -123,6 +153,21 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   uint8_t handleAnonClockReq(const mesh::Identity& sender, uint32_t sender_timestamp, const uint8_t* data);
   int handleRequest(ClientInfo* sender, uint32_t sender_timestamp, uint8_t* payload, size_t payload_len);
   mesh::Packet* createSelfAdvert();
+  mesh::Packet* createRoomAdvert();
+  bool roomAddPost(ClientInfo* client, const char* text);
+  bool roomStorePost(const mesh::Identity& author, const char* text);
+  void loadRoomPosts();
+  bool compactRoomPosts();
+  bool verifyRoomPostFile(uint8_t slot, uint32_t* generation, bool load_posts);
+  bool roomPushPost(ClientInfo* client, RoomPostInfo& post);
+  uint8_t roomGetUnsyncedCount(ClientInfo* client);
+  bool processRoomAck(const uint8_t* data);
+  int handleRoomRequest(ClientInfo* sender, uint32_t sender_timestamp, uint8_t* payload, size_t payload_len);
+  void handleRoomCommand(uint32_t sender_timestamp, char* command, char* reply);
+  void onRoomAnonDataRecv(mesh::Packet* packet, const uint8_t* secret, const mesh::Identity& sender, uint8_t* data, size_t len);
+  void onRoomPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender_idx, const uint8_t* secret, uint8_t* data, size_t len);
+  bool onRoomPeerPathRecv(mesh::Packet* packet, int sender_idx, const uint8_t* secret, uint8_t* path, uint8_t path_len, uint8_t extra_type, uint8_t* extra, uint8_t extra_len);
+  void roomLoop();
 
   File openAppend(const char* fname);
   bool isLooped(const mesh::Packet* packet, const uint8_t max_counters[]);
@@ -166,19 +211,43 @@ protected:
   mesh::DispatcherAction onRecvPacket(mesh::Packet* pkt) override;
 
   void onAnonDataRecv(mesh::Packet* packet, const uint8_t* secret, const mesh::Identity& sender, uint8_t* data, size_t len) override;
+  void onAnonDataRecvForIdentity(mesh::Packet* packet, const mesh::LocalIdentity& local_id, const uint8_t* secret, const mesh::Identity& sender, uint8_t* data, size_t len) override;
+  void onPeerDataRecvForIdentity(mesh::Packet* packet, const mesh::LocalIdentity& local_id, uint8_t type, int sender_idx, const uint8_t* secret, uint8_t* data, size_t len) override;
+  bool onPeerPathRecvForIdentity(mesh::Packet* packet, const mesh::LocalIdentity& local_id, int sender_idx, const uint8_t* secret, uint8_t* path, uint8_t path_len, uint8_t extra_type, uint8_t* extra, uint8_t extra_len) override;
   int searchPeersByHash(const uint8_t* hash) override;
   void getPeerSharedSecret(uint8_t* dest_secret, int peer_idx) override;
+  int searchPeersByHashForIdentity(const mesh::LocalIdentity& local_id, const uint8_t* hash) override;
+  void getPeerSharedSecretForIdentity(const mesh::LocalIdentity& local_id, uint8_t* dest_secret, int peer_idx) override;
+  int getLocalIdentityCount() const override {
+#if defined(ROOM_EXTRA_FS)
+    return room_service_enabled ? 2 : 1;
+#else
+    return 1;
+#endif
+  }
+  mesh::LocalIdentity* getLocalIdentity(int idx) override {
+#if defined(ROOM_EXTRA_FS)
+    return idx == 0 ? &self_id : (idx == 1 && room_service_enabled ? &room_id : NULL);
+#else
+    return idx == 0 ? &self_id : NULL;
+#endif
+  }
+public:
+  void setRoomIdentity(const mesh::LocalIdentity& id) { room_id = id; }
+  mesh::LocalIdentity& getRoomIdentity() { return room_id; }
+  bool isRoomServiceEnabled() const { return room_service_enabled; }
   void onAdvertRecv(mesh::Packet* packet, const mesh::Identity& id, uint32_t timestamp, const uint8_t* app_data, size_t app_data_len);
   void onPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender_idx, const uint8_t* secret, uint8_t* data, size_t len) override;
   bool onPeerPathRecv(mesh::Packet* packet, int sender_idx, const uint8_t* secret, uint8_t* path, uint8_t path_len, uint8_t extra_type, uint8_t* extra, uint8_t extra_len) override;
   void onControlDataRecv(mesh::Packet* packet) override;
+  void onAckRecv(mesh::Packet* packet, uint32_t ack_crc) override;
 
   void sendFloodReply(mesh::Packet* packet, unsigned long delay_millis, uint8_t path_hash_size);
 
 public:
   MyMesh(mesh::MainBoard& board, mesh::Radio& radio, mesh::MillisecondClock& ms, mesh::RNG& rng, mesh::RTCClock& rtc, mesh::MeshTables& tables);
 
-  void begin(FILESYSTEM* fs);
+  void begin(FILESYSTEM* fs, FILESYSTEM* room_fs = NULL);
   void sendNodeDiscoverReq();
   const char* getFirmwareVer() override { return FIRMWARE_VERSION; }
   const char* getBuildDate() override { return FIRMWARE_BUILD_DATE; }
@@ -196,11 +265,17 @@ public:
   }
 
   void sendFloodScoped(const TransportKey& scope, mesh::Packet* pkt, uint32_t delay_millis, uint8_t path_hash_size);
+  bool canQueueRoomPacket(mesh::Packet* packet);
+  bool sendRoomFloodScoped(const TransportKey& scope, mesh::Packet* pkt, uint32_t delay_millis, uint8_t path_hash_size, uint8_t priority = ROOM_TX_PRIORITY);
+  bool sendRoomFloodReply(mesh::Packet* packet, unsigned long delay_millis, uint8_t path_hash_size, uint8_t priority = ROOM_TX_PRIORITY);
+  bool sendRoomDirectPriority(mesh::Packet* packet, const uint8_t* path, uint8_t path_len, uint32_t delay_millis, uint8_t priority = ROOM_TX_PRIORITY);
+  bool sendRoomZeroHopPriority(mesh::Packet* packet, uint32_t delay_millis, uint8_t priority = ROOM_TX_PRIORITY);
 
   // CommonCLICallbacks
   void applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins) override;
   bool formatFileSystem() override;
   void sendSelfAdvertisement(int delay_millis, bool flood) override;
+  void sendRoomSelfAdvertisement(int delay_millis, bool flood);
   void updateAdvertTimer() override;
   void updateFloodAdvertTimer() override;
 
@@ -228,6 +303,9 @@ public:
 
   void handleCommand(uint32_t sender_timestamp, char* command, char* reply);
   void loop();
+#if defined(RESOURCE_AUDIT)
+  void printResourceRuntimeStats();
+#endif
 
 #if defined(WITH_BRIDGE)
   void setBridgeState(bool enable) override {

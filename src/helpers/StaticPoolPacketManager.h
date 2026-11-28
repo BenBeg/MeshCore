@@ -23,6 +23,9 @@ public:
 
 class StaticPoolPacketManager : public mesh::PacketManager {
   PacketQueue unused, send_queue, rx_queue;
+#if defined(RESOURCE_AUDIT)
+  int audit_in_use, audit_peak_in_use, audit_peak_outbound, audit_peak_inbound;
+#endif
 
 public:
   StaticPoolPacketManager(int pool_size);
@@ -34,6 +37,11 @@ public:
   int getOutboundCount(uint32_t now) const override;
   int getOutboundTotal() const override;
   int getFreeCount() const override;
+#if defined(RESOURCE_AUDIT)
+  int getAuditPeakInUse() const { return audit_peak_in_use; }
+  int getAuditPeakOutbound() const { return audit_peak_outbound; }
+  int getAuditPeakInbound() const { return audit_peak_inbound; }
+#endif
   mesh::Packet* getOutboundByIdx(int i) override;
   mesh::Packet* removeOutboundByIdx(int i) override;
   void queueInbound(mesh::Packet* packet, uint32_t scheduled_for) override;
