@@ -68,7 +68,11 @@ bool PacketQueue::add(mesh::Packet* packet, uint8_t priority, uint32_t scheduled
   return true;
 }
 
-StaticPoolPacketManager::StaticPoolPacketManager(int pool_size): unused(pool_size), send_queue(pool_size), rx_queue(pool_size) {
+StaticPoolPacketManager::StaticPoolPacketManager(int pool_size): unused(pool_size), send_queue(pool_size), rx_queue(pool_size)
+#if defined(RESOURCE_AUDIT)
+  , audit_in_use(0), audit_peak_in_use(0), audit_peak_outbound(0), audit_peak_inbound(0)
+#endif
+{
   // load up our unusued Packet pool
   for (int i = 0; i < pool_size; i++) {
     unused.add(new mesh::Packet(), 0, 0);
@@ -76,13 +80,24 @@ StaticPoolPacketManager::StaticPoolPacketManager(int pool_size): unused(pool_siz
 }
 
 mesh::Packet* StaticPoolPacketManager::allocNew() {
-  return unused.removeByIdx(0);  // just get first one (returns NULL if empty)
+  mesh::Packet* packet = unused.removeByIdx(0);  // just get first one (returns NULL if empty)
+#if defined(RESOURCE_AUDIT)
+  if (packet) {
+    audit_in_use++;
+    if (audit_in_use > audit_peak_in_use) audit_peak_in_use = audit_in_use;
+  }
+#endif
+  return packet;
 }
 
 void StaticPoolPacketManager::free(mesh::Packet* packet) {
   if (packet == NULL) return;
   if (!unused.add(packet, 0, 0)) {
     MESH_DEBUG_PRINTLN("free: unused queue full, possible double-free detected");
+  } else {
+#if defined(RESOURCE_AUDIT)
+    if (audit_in_use > 0) audit_in_use--;
+#endif
   }
 }
 
@@ -92,6 +107,9 @@ void StaticPoolPacketManager::queueOutbound(mesh::Packet* packet, uint8_t priori
     MESH_DEBUG_PRINTLN("queueOutbound: send queue full, dropping packet");
     free(packet);
   }
+#if defined(RESOURCE_AUDIT)
+  else if (send_queue.count() > audit_peak_outbound) audit_peak_outbound = send_queue.count();
+#endif
 }
 
 mesh::Packet* StaticPoolPacketManager::getNextOutbound(uint32_t now) {
@@ -124,6 +142,9 @@ void StaticPoolPacketManager::queueInbound(mesh::Packet* packet, uint32_t schedu
     MESH_DEBUG_PRINTLN("queueInbound: rx queue full, dropping packet");
     free(packet);
   }
+#if defined(RESOURCE_AUDIT)
+  else if (rx_queue.count() > audit_peak_inbound) audit_peak_inbound = rx_queue.count();
+#endif
 }
 mesh::Packet* StaticPoolPacketManager::getNextInbound(uint32_t now) {
   return rx_queue.get(now);
