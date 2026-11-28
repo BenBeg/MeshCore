@@ -215,6 +215,11 @@ void ClientACL::loadAtomic(FILESYSTEM* fs, const mesh::LocalIdentity& self_id) {
         uint32_t payload_hash = 2166136261UL;
         for (uint16_t i = 0; ok && i < headers[slot].count; i++) {
           if (file.read(record, sizeof(record)) != sizeof(record)) { ok = false; break; }
+          uint8_t path_len = record[39];
+          if (path_len != OUT_PATH_UNKNOWN && !mesh::Packet::isValidPathLen(path_len)) {
+            ok = false;
+            break;
+          }
           payload_hash = aclHashUpdate(payload_hash, record, sizeof(record));
           ClientInfo& client = clients[num_clients];
           memset(&client, 0, sizeof(client));
