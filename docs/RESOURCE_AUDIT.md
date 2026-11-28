@@ -53,6 +53,16 @@ A first source inspection identifies the main fixed-memory costs that the ELF re
 
 These observations show why the resource audit must not look only at firmware flash size. The Room service adds meaningful fixed RAM and heap pressure even though it shares the Repeater's radio and packet manager. Do not treat the formulas above as final byte counts; use the target compiler's ELF section report and runtime measurements for acceptance.
 
+### Packet-manager allocation detail (source-verified)
+
+`StaticPoolPacketManager` does not embed its packet objects or queue tables inside the manager object. Its constructor creates `pool_size` individual `mesh::Packet` objects with `new`, and each of its three `PacketQueue` instances allocates three parallel arrays with `new`: packet pointers, 8-bit priorities and 32-bit scheduled times. With the combined target's pool size of 36, the payload bytes requested by these allocations are therefore:
+
+- Packet objects: `36 × sizeof(mesh::Packet)`.
+- Queue arrays: `3 queues × 36 entries × (sizeof(mesh::Packet*) + sizeof(uint8_t) + sizeof(uint32_t))`.
+
+Consequently, `sizeof(StaticPoolPacketManager)` reports only the manager and queue-object members; it does **not** include these heap allocations. The diagnostic prints both heap payload formulas separately. Allocator metadata, alignment overhead, fragmentation and other dynamic allocations remain additional costs. This distinction is important when reconciling ELF `.bss` with runtime free-heap measurements.
+
+
 ## Opt-in target-compiler object-size diagnostics
 
 A bench-only PlatformIO environment named `SenseCap_Solar_repeater_resource_audit` enables `RESOURCE_AUDIT=1`. On boot it prints target-compiler `sizeof` values for `MyMesh`, `ClientInfo`, `ClientACL`, `RoomPostInfo`, `mesh::Packet` and `StaticPoolPacketManager`, plus the Room post cache, one ACL client array, all 36 packet objects and the three packet-queue backing arrays.
