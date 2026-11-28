@@ -86,7 +86,12 @@ jobs:
             "$SIZE_TOOL" -A "$ELF"
             echo
             echo "ELF load segments:"
-            "$(dirname "$SIZE_TOOL")/arm-none-eabi-readelf" -l "$ELF"
+            READELF_TOOL="$(command -v arm-none-eabi-readelf || true)"
+            if [ -n "$READELF_TOOL" ]; then
+              "$READELF_TOOL" -l "$ELF"
+            else
+              echo "arm-none-eabi-readelf not available; ELF section report above remains authoritative for this step."
+            fi
           } | tee audit-output/stock-repeater-size-report.txt
           "$SIZE_TOOL" -A "$ELF" > audit-output/stock-repeater-sections.txt
           cp "$ELF" audit-output/stock-repeater.elf
@@ -145,7 +150,12 @@ jobs:
               "$SIZE_TOOL" -A "$ELF"
               echo
               echo "ELF load segments:"
-              "$(dirname "$SIZE_TOOL")/arm-none-eabi-readelf" -l "$ELF"
+              READELF_TOOL="$(command -v arm-none-eabi-readelf || true)"
+              if [ -n "$READELF_TOOL" ]; then
+                "$READELF_TOOL" -l "$ELF"
+              else
+                echo "arm-none-eabi-readelf not available; ELF section report above remains authoritative for this step."
+              fi
             } | tee "audit-output/$ENV-size-report.txt"
             "$SIZE_TOOL" -A "$ELF" > "audit-output/$ENV-sections.txt"
             cp "$ELF" "audit-output/$ENV.elf"
