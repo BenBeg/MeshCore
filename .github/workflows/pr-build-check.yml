@@ -48,3 +48,77 @@ jobs:
 
       - name: Build ${{ matrix.environment }}
         run: pio run -e ${{ matrix.environment }}
+
+  resource-stock-repeater:
+    name: Resource audit — upstream stock SenseCAP Repeater
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout pinned upstream baseline
+        uses: actions/checkout@v6
+        with:
+          ref: 75b04ef06def54b348400cb1b138afb6749ffd4f
+
+      - name: Setup Build Environment
+        uses: ./.github/actions/setup-build-environment
+
+      - name: Build stock SenseCAP Repeater
+        run: pio run -e SenseCap_Solar_repeater
+
+      - name: Capture stock image and ELF section sizes
+        shell: bash
+        run: |
+          set -euo pipefail
+          SIZE_TOOL="$(find "$HOME/.platformio/packages" -type f -name arm-none-eabi-size -print -quit)"
+          ELF="$(find .pio/build/SenseCap_Solar_repeater -type f -name '*.elf' -print -quit)"
+          test -n "$SIZE_TOOL" && test -n "$ELF"
+          mkdir -p audit-output
+          "$SIZE_TOOL" -A "$ELF" | tee audit-output/stock-repeater-sections.txt
+          cp "$ELF" audit-output/stock-repeater.elf
+          find .pio/build/SenseCap_Solar_repeater -type f \( -name '*.bin' -o -name '*.hex' -o -name '*.map' \) -exec cp {} audit-output/ \;
+
+      - name: Upload stock Repeater resource report
+        uses: actions/upload-artifact@v4
+        with:
+          name: sensecap-stock-repeater-resource-report
+          path: audit-output/
+
+  resource-fork-images:
+    name: Resource audit — fork Room-only and combined images
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout pull request revision
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Setup Build Environment
+        uses: ./.github/actions/setup-build-environment
+
+      - name: Build Room-only image
+        run: pio run -e SenseCap_Solar_room_server
+
+      - name: Build combined Repeater + Room image
+        run: pio run -e SenseCap_Solar_repeater
+
+      - name: Capture fork images and ELF section sizes
+        shell: bash
+        run: |
+          set -euo pipefail
+          SIZE_TOOL="$(find "$HOME/.platformio/packages" -type f -name arm-none-eabi-size -print -quit)"
+          test -n "$SIZE_TOOL"
+          mkdir -p audit-output
+          for ENV in SenseCap_Solar_room_server SenseCap_Solar_repeater; do
+            ELF="$(find ".pio/build/$ENV" -type f -name '*.elf' -print -quit)"
+            test -n "$ELF"
+            "$SIZE_TOOL" -A "$ELF" | tee "audit-output/$ENV-sections.txt"
+            cp "$ELF" "audit-output/$ENV.elf"
+            while IFS= read -r FILE; do
+              cp "$FILE" "audit-output/$ENV-$(basename "$FILE")"
+            done < <(find ".pio/build/$ENV" -type f \( -name '*.bin' -o -name '*.hex' -o -name '*.map' \))
+          done
+
+      - name: Upload fork resource reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: sensecap-fork-resource-reports
+          path: audit-output/
