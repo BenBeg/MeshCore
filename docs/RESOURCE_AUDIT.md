@@ -126,7 +126,7 @@ The team must choose numerical reserve thresholds after seeing the first build a
 - Stock, Room-only, combined production and combined diagnostic BIN/ELF section measurements: recorded above.
 - Instrumented `.su` reports archived; largest individual compiler-reported frame is 2,352 bytes (`ge_double_scalarmult_vartime`). This is a per-function frame, not a worst-case call-chain or runtime stack high-water measurement.
 - Diagnostic firmware now emits a RESOURCE_RUNTIME line every 60 seconds after the first 10 seconds, with current free packet count, peak packet-pool occupancy, current/peak TX queue and peak delayed-RX queue. Counters are compiled only under RESOURCE_AUDIT; production firmware layout/behavior is unchanged by these counters.
-- Runtime free-heap, largest allocatable block, and stack high-water remain unmeasured. The nRF52 allocator/stack APIs must be confirmed before adding those measurements; packet-pool occupancy is not a substitute for heap headroom.
+- The diagnostic sample also reports FreeRTOS loop-task minimum-ever free stack bytes using the pinned nRF52 core's enabled uxTaskGetStackHighWaterMark API. This covers the Arduino loop task only, not BLE callback/ISR stacks. Runtime free-heap and largest allocatable block remain unmeasured; the core's heap_3 allocator wraps newlib malloc, while the FreeRTOS xPortGetFreeHeapSize declarations are not implemented by heap_3. Do not call those declarations as if they were available.
 - Three-device performance and sleep tests: pending.
 - Hardware has not been flashed as part of this audit.
 
@@ -140,3 +140,5 @@ The diagnostic build tracks packet-manager high-water values in StaticPoolPacket
 - peak delayed inbound queue depth.
 
 The diagnostic serial sample is emitted at 115200 baud every 60 seconds, starting after 10 seconds. These counters add a small amount of diagnostic-only state and branch work; they are absent from the production build. Peak values are cumulative since boot and reset only on reboot. They expose packet-pool pressure and queue pressure, but do not measure allocator fragmentation, free heap, largest allocatable block, call-chain stack high-water or interrupt stack use. Do not infer those values from packet counts.
+
+The loop-task stack high-water value is reported in bytes (FreeRTOS stack words multiplied by sizeof(StackType_t)). It is the minimum free stack observed since task creation, and is therefore more useful than a one-time stack-pointer snapshot. The BLE callback task has a separate stack and must be measured separately before a whole-device stack reserve can be claimed.
