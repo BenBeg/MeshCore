@@ -92,7 +92,7 @@ jobs:
           cp "$ELF" audit-output/stock-repeater.elf
           while IFS= read -r FILE; do
             cp "$FILE" "audit-output/stock-repeater-$(basename "$FILE")"
-          done < <(find .pio/build/SenseCap_Solar_repeater -type f \( -name '*.bin' -o -name '*.hex' -o -name '*.map' \))
+          done < <(find .pio/build/SenseCap_Solar_repeater -type f \( -name '*.bin' -o -name '*.hex' -o -name '*.map' -o -name '*.su' \))
 
       - name: Upload stock Repeater resource report
         uses: actions/upload-artifact@v4
@@ -151,7 +151,7 @@ jobs:
             cp "$ELF" "audit-output/$ENV.elf"
             while IFS= read -r FILE; do
               cp "$FILE" "audit-output/$ENV-$(basename "$FILE")"
-            done < <(find ".pio/build/$ENV" -type f \( -name '*.bin' -o -name '*.hex' -o -name '*.map' \))
+            done < <(find ".pio/build/$ENV" -type f \( -name '*.bin' -o -name '*.hex' -o -name '*.map' -o -name '*.su' \))
           done
 
       - name: Upload fork resource reports
