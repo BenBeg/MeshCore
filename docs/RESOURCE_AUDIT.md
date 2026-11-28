@@ -16,6 +16,10 @@ The GitHub Actions workflow `.github/workflows/pr-build-check.yml` (resource-aud
 
 The upstream baseline is intentionally pinned so results remain reproducible. If the project rebases or changes its baseline, update this document and the workflow together.
 
+## Target memory regions
+
+The nRF52840 has 256 KB physical RAM and 1 MB internal flash. The actual ExtraFS linker script, `boards/nrf52840_s140_v7_extrafs.ld`, defines an application FLASH region at origin `0x27000` with length `0xAD000` (708,608 bytes), and an application RAM region at origin `0x20006000` with length `0x3A000` (237,568 bytes). The lower RAM range is reserved outside this application region for the SoftDevice/system configuration. The PlatformIO upload ceiling matches the FLASH region. It is a limit, not a measurement of the linked image or remaining headroom. External QSPI flash is persistent storage and does not add working RAM.
+
 ## Build-time measurements
 
 For every image, retain the exact source SHA, PlatformIO build log, ELF, available BIN/HEX/MAP files, and ELF section report.
