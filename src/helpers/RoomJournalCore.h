@@ -110,7 +110,11 @@ RoomJournalScanResult roomJournalScan(const Header& header, uint32_t file_size,
       break;
     }
     Record record;
-    if (!read_record(record) || !roomJournalRecordValid(record)) {
+    // With a full record still remaining in the file, a failed read is an I/O
+    // failure, not evidence of an interrupted append. Reject this slot so the
+    // caller can try the other generation without discarding possibly valid data.
+    if (!read_record(record)) return result;
+    if (!roomJournalRecordValid(record)) {
       result.needs_compact = true;
       break;
     }

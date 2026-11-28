@@ -193,6 +193,16 @@ TEST(RoomJournalCore, CorruptTailKeepsBaseAndRequestsCompaction) {
   EXPECT_EQ(60U, result.last_sequence);
 }
 
+TEST(RoomJournalCore, ReadFailureInAppendedRecordRejectsSlot) {
+  auto file = makeJournal({}, {makeRecord(12, "tail")});
+  file.fail_read = true;
+  std::vector<uint32_t> seq;
+  auto result = scan(file, seq);
+  EXPECT_FALSE(result.valid);
+  EXPECT_FALSE(result.needs_compact);
+  EXPECT_TRUE(seq.empty());
+}
+
 TEST(RoomJournalCore, ReadFailureInBaseRejectsSlot) {
   auto file = makeJournal({makeRecord(70, "base")});
   file.fail_read = true;
