@@ -246,6 +246,9 @@ void setup() {
 }
 
 void loop() {
+#if defined(RESOURCE_AUDIT)
+  static unsigned long next_resource_report = 10000;
+#endif
   // Handle Serial CLI
   int len = strlen(command);
   // `command` must stay NUL-terminated within its bounds. If it ever isn't,
@@ -324,6 +327,13 @@ void loop() {
   ui_task.loop();
 #endif
   rtc_clock.tick();
+
+#if defined(RESOURCE_AUDIT)
+  if ((int32_t)(millis() - next_resource_report) >= 0) {
+    the_mesh.printResourceRuntimeStats();
+    next_resource_report = millis() + 60000;
+  }
+#endif
 
 #ifdef HAS_EXTERNAL_WATCHDOG
   external_watchdog.loop();
