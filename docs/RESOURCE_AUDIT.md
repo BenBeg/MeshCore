@@ -125,6 +125,18 @@ The team must choose numerical reserve thresholds after seeing the first build a
 - Workflow implementation: verified on PR Build Check run `46100886098`; both resource artifact archives uploaded successfully.
 - Stock, Room-only, combined production and combined diagnostic BIN/ELF section measurements: recorded above.
 - Instrumented `.su` reports archived; largest individual compiler-reported frame is 2,352 bytes (`ge_double_scalarmult_vartime`). This is a per-function frame, not a worst-case call-chain or runtime stack high-water measurement.
-- Runtime free-heap, largest-block, stack high-water and packet/TX queue measurements: pending hardware instrumentation and bench testing.
+- Diagnostic firmware now emits a RESOURCE_RUNTIME line every 60 seconds after the first 10 seconds, with current free packet count, peak packet-pool occupancy, current/peak TX queue and peak delayed-RX queue. Counters are compiled only under RESOURCE_AUDIT; production firmware layout/behavior is unchanged by these counters.
+- Runtime free-heap, largest allocatable block, and stack high-water remain unmeasured. The nRF52 allocator/stack APIs must be confirmed before adding those measurements; packet-pool occupancy is not a substitute for heap headroom.
 - Three-device performance and sleep tests: pending.
 - Hardware has not been flashed as part of this audit.
+
+
+## Runtime diagnostic implementation notes
+
+The diagnostic build tracks packet-manager high-water values in StaticPoolPacketManager only when RESOURCE_AUDIT is defined. It reports:
+- current unused packet count;
+- peak number of packets checked out of the pool since boot;
+- current and peak outbound queue depth;
+- peak delayed inbound queue depth.
+
+The diagnostic serial sample is emitted at 115200 baud every 60 seconds, starting after 10 seconds. These counters add a small amount of diagnostic-only state and branch work; they are absent from the production build. Peak values are cumulative since boot and reset only on reboot. They expose packet-pool pressure and queue pressure, but do not measure allocator fragmentation, free heap, largest allocatable block, call-chain stack high-water or interrupt stack use. Do not infer those values from packet counts.
