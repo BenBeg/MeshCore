@@ -12,6 +12,57 @@ static const uint16_t VERSION = 1;
 using Record = RoomJournalRecordCore<32, 151>;
 using Header = RoomJournalHeaderCore;
 
+TEST(RoomJournalRecovery, NewestValidSlotIsPreferred) {
+  EXPECT_EQ(0, roomJournalNewestSlot(true, 4, false, 99));
+  EXPECT_EQ(1, roomJournalNewestSlot(false, 99, true, 4));
+  EXPECT_EQ(1, roomJournalNewestSlot(true, 4, true, 5));
+  EXPECT_EQ(0, roomJournalNewestSlot(true, 5, true, 5));
+}
+
+TEST(RoomJournalRecovery, GenerationWraparoundIsOrderedPortably) {
+  EXPECT_EQ(1, roomJournalNewestSlot(true, 0xFFFFFFFEUL, true, 1));
+  EXPECT_EQ(0, roomJournalNewestSlot(true, 1, true, 0xFFFFFFFEUL));
+  EXPECT_EQ(0, roomJournalNewestSlot(true, 0, true, 0x80000000UL));
+}
+
+TEST(RoomJournalRecovery, FallsBackWhenPreferredSecondPassFails) {
+  int attempts[2] = {0, 0};
+  uint8_t loaded = roomJournalLoadWithFallback(true, 4, true, 5, [&](uint8_t slot) {
+    attempts[slot]++;
+    return slot == 0;
+  });
+  EXPECT_EQ(0, loaded);
+  EXPECT_EQ(1, attempts[1]);
+  EXPECT_EQ(1, attempts[0]);
+}
+
+TEST(RoomJournalRecovery, DoesNotAttemptInvalidFallback) {
+  int attempts = 0;
+  uint8_t loaded = roomJournalLoadWithFallback(true, 4, false, 0, [&](uint8_t) {
+    attempts++;
+    return false;
+  });
+  EXPECT_EQ(0xFF, loaded);
+  EXPECT_EQ(1, attempts);
+}
+
+TEST(RoomJournalRecovery, BothInvalidSlotsAreNotLoaded) {
+  int attempts = 0;
+  uint8_t loaded = roomJournalLoadWithFallback(false, 0, false, 0, [&](uint8_t) {
+    attempts++;
+    return true;
+  });
+  EXPECT_EQ(0xFF, loaded);
+  EXPECT_EQ(0, attempts);
+}
+
+TEST(RoomJournalRecovery, EmptyInitializationRequiresBothFilesMissing) {
+  EXPECT_TRUE(roomJournalCanInitializeEmpty(false, false));
+  EXPECT_FALSE(roomJournalCanInitializeEmpty(true, false));
+  EXPECT_FALSE(roomJournalCanInitializeEmpty(false, true));
+  EXPECT_FALSE(roomJournalCanInitializeEmpty(true, true));
+}
+
 class FakeJournalFile {
 public:
   std::vector<uint8_t> bytes;

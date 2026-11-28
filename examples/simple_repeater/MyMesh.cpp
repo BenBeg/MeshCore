@@ -953,27 +953,35 @@ void MyMesh::loadRoomPosts() {
   uint32_t gen_a = 0, gen_b = 0;
   bool valid_a = verifyRoomPostFile(0, &gen_a, false);
   bool valid_b = verifyRoomPostFile(1, &gen_b, false);
-  uint8_t first = valid_b && (!valid_a || (int32_t)(gen_b - gen_a) > 0) ? 1 : 0;
-  if ((first == 0 && valid_a && verifyRoomPostFile(0, &gen_a, true)) ||
-      (first == 1 && valid_b && verifyRoomPostFile(1, &gen_b, true))) {
-    room_journal_slot = first;
-    room_journal_generation = first == 0 ? gen_a : gen_b;
+  uint8_t loaded_slot = roomJournalLoadWithFallback(valid_a, gen_a, valid_b, gen_b,
+    [this, &gen_a, &gen_b](uint8_t slot) {
+      return verifyRoomPostFile(slot, slot == 0 ? &gen_a : &gen_b, true);
+    });
+  if (loaded_slot != 0xFF) {
+    room_journal_slot = loaded_slot;
+    room_journal_generation = loaded_slot == 0 ? gen_a : gen_b;
     room_journal_ready = true;
-  } else {
-    uint8_t second = 1 - first;
-    uint32_t gen = 0;
-    bool valid = second == 0 ? valid_a : valid_b;
-    if (!valid || !verifyRoomPostFile(second, &gen, true)) {
-      room_journal_ready = false;
-      room_post_count = 0;
-      room_next_post_idx = 0;
-      memset(room_posts, 0, sizeof(room_posts));
-      compactRoomPosts(); // create a valid empty journal without touching other files
-      return;
-    }
-    room_journal_slot = second;
-    room_journal_generation = gen;
-    room_journal_ready = true;
+    return;
+  }
+
+  // Do not treat an existing but unreadable/corrupt journal as a blank install.
+  // Preserve both files and fail closed; only a genuinely empty first-use store
+  // may be initialized automatically.
+  room_journal_ready = false;
+  room_post_count = 0;
+  room_next_post_idx = 0;
+  room_next_sequence = 0;
+  memset(room_posts, 0, sizeof(room_posts));
+  bool exists_a = _room_fs->exists(roomJournalPath(0));
+  bool exists_b = _room_fs->exists(roomJournalPath(1));
+  if (!roomJournalCanInitializeEmpty(exists_a, exists_b)) {
+    room_service_enabled = false;
+    MESH_DEBUG_PRINTLN("Room journal unreadable; preserving files and disabling Room service");
+    return;
+  }
+  if (!compactRoomPosts()) {
+    room_service_enabled = false;
+    MESH_DEBUG_PRINTLN("Room journal initialization failed; disabling Room service");
   }
 }
 

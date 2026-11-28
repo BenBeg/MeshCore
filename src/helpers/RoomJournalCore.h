@@ -51,6 +51,30 @@ struct RoomJournalScanResult {
   uint16_t valid_records;
 };
 
+// Select the newest valid journal and retry the other validated slot if the
+// preferred slot fails its second-pass load. 0xFF means no slot was loaded.
+inline uint8_t roomJournalNewestSlot(bool valid0, uint32_t generation0,
+                                     bool valid1, uint32_t generation1) {
+  if (!valid0) return valid1 ? 1 : 0xFF;
+  if (!valid1) return 0;
+  return roomSequenceIsNewer(generation1, generation0) ? 1 : 0;
+}
+
+template <typename Load>
+uint8_t roomJournalLoadWithFallback(bool valid0, uint32_t generation0,
+                                    bool valid1, uint32_t generation1, Load load) {
+  uint8_t preferred = roomJournalNewestSlot(valid0, generation0, valid1, generation1);
+  if (preferred == 0xFF) return 0xFF;
+  if (load(preferred)) return preferred;
+  uint8_t fallback = 1 - preferred;
+  bool fallback_valid = fallback == 0 ? valid0 : valid1;
+  return fallback_valid && load(fallback) ? fallback : 0xFF;
+}
+
+inline bool roomJournalCanInitializeEmpty(bool slot0_exists, bool slot1_exists) {
+  return !slot0_exists && !slot1_exists;
+}
+
 // read_record must read exactly one record from the current sequential position.
 // The scanner is shared by firmware and host tests; the caller owns the file.
 template <typename Header, typename Record, typename ReadRecord, typename OnRecord>
