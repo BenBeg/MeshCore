@@ -6,7 +6,7 @@ Establish whether the combined SenseCAP Solar Repeater + Room Server image fits 
 
 ## Build comparison
 
-The GitHub Actions workflow `.github/workflows/sensecap-resource-audit.yml` builds three images:
+The GitHub Actions workflow `.github/workflows/pr-build-check.yml` (resource-audit jobs) builds three images:
 
 | Image | Source revision | Purpose |
 |---|---|---|
