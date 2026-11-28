@@ -130,3 +130,27 @@ The fork's Room-only image built, and the combined production image built with P
 **Correction:** the capture steps now use the target toolchain's `arm-none-eabi-objcopy` to generate a raw binary from each ELF when a pre-existing `.bin` is absent. The collector still requires the ELF and `arm-none-eabi-size`, and preserves the ELF, section report, generated binary, HEX/MAP and available `.su` files. This changes CI artifact collection only; it does not alter firmware source or production build flags.
 
 **Verification status:** pending a fresh PR Build Check after this workflow correction. The prior run's successful firmware compilation remains valid, but no resource artifact is claimed until both upload jobs complete and the artifacts are inspected.
+
+
+## Development log — first successful resource audit (2026-11-28)
+
+**Verified:** PR Build Check run [46100886098](https://github.com/BenBeg/MeshCore/actions/runs/46100886098) completed successfully on branch head `92b52fd0fb597390c9e667f47032721f0892e835`. Native unit tests also passed in run [46100886090](https://github.com/BenBeg/MeshCore/actions/runs/46100886090). All 16 firmware matrix targets passed, both resource-audit jobs passed, and both artifact archives were uploaded and inspected.
+
+**Measured production image comparison:**
+
+| Metric | Upstream stock Repeater | Fork combined Repeater + Room |
+|---|---:|---:|
+| Firmware BIN | 365,396 B | 384,696 B |
+| `.text` + `.ARM.exidx` | 363,536 B | 382,832 B |
+| `.data` | 1,860 B | 1,864 B |
+| `.bss` | 33,016 B | 45,700 B |
+| `.data` + `.bss` | 34,876 B | 47,564 B |
+| Linker `.heap` reservation | 200,644 B | 187,956 B |
+
+The combined image is 19,300 bytes larger in BIN form (+5.28%). Its linked RAM use (`.data` + `.bss`) is 12,688 bytes higher. The linker correspondingly reduces the reserved heap by 12,688 bytes; the total application RAM region accounting remains 235,520 bytes. The fork's application flash region is 708,608 bytes, leaving 323,912 bytes of BIN-based headroom for the combined production image. Stock and fork linker flash regions differ, so their percentages must not be compared using a shared denominator.
+
+The Room-only image is 359,540 B BIN; the combined diagnostic image is 385,528 B BIN. The diagnostic artifact includes compiler `.su` reports. The largest individual reported static stack frame is 2,352 bytes in `ge_double_scalarmult_vartime`; this is not a complete call-chain or runtime high-water measurement. The target `sizeof` serial diagnostic is compiled into the diagnostic image, but still needs to be captured on hardware.
+
+**Engineering interpretation:** firmware size is within the linker region with substantial flash headroom. RAM is the more important remaining risk: the combined integration consumes an additional 12.7 KB of statically allocated RAM and reduces the linker's heap reservation by the same amount. We cannot call the device resource-safe until actual free-heap/largest-block, stack high-water, packet-pool/TX queue peaks and forwarding latency are measured under concurrent Repeater + Room load.
+
+**Next actions:** add or confirm low-overhead runtime heap/stack/queue instrumentation; inspect target-specific stack-frame hotspots and call paths; then perform the documented three-device bench protocol. No hardware has been flashed. PR #1 remains open and draft; no merge was performed.
