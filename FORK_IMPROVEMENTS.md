@@ -163,3 +163,12 @@ Added opt-in runtime telemetry to the resource-audit build only. `StaticPoolPack
 **Scope limitation:** this is packet-pool/queue pressure telemetry, not a heap monitor. It does not report allocator free bytes, largest free block, heap fragmentation, stack high-water or worst-case call-chain stack. Those APIs have not yet been added because the exact nRF52 framework allocator and stack boundaries must be confirmed first. No runtime measurement exists until the diagnostic image is flashed and exercised on the target.
 
 **Verification:** pending CI for the instrumentation commits. Next: confirm diagnostic and production targets compile, then inspect the pinned nRF52 framework/toolchain for a safe allocator/stack measurement method before expanding instrumentation. Hardware remains unflashed; PR remains draft.
+
+
+## Development log — nRF52 loop-task stack high-water diagnostic (2026-11-28)
+
+Inspected the exact pinned Adafruit nRF52 core revision used by this PlatformIO environment (`d541301665b40959682252911e57b11df3ee651a`). Its Arduino `loop()` runs in a FreeRTOS task created with a 1,024-word stack, and the core enables `INCLUDE_uxTaskGetStackHighWaterMark`. The audit diagnostic now reports `uxTaskGetStackHighWaterMark(NULL) × sizeof(StackType_t)` as minimum-ever free bytes for the calling loop task. This is a true task stack high-water measurement for the loop task, not a complete system-wide stack measurement; the BLE callback task and interrupt stack are separate and remain outside this sample.
+
+The same source inspection found the selected FreeRTOS memory manager is `heap_3`, which delegates allocation to newlib malloc. Although FreeRTOS `portable.h` declares `xPortGetFreeHeapSize()` and `xPortGetMinimumEverFreeHeapSize()`, `heap_3.c` does not implement those functions. The diagnostic will not call these unavailable APIs. Reliable free-heap/largest-block measurement remains open and needs a compatible newlib allocator-statistics method or explicit allocation accounting.
+
+**Verification:** latest diagnostic/stack instrumentation commit is pending CI. No device has been flashed; no runtime sample has yet been captured.
