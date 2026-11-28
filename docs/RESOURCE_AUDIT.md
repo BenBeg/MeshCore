@@ -27,21 +27,19 @@ For every image, retain the exact source SHA, PlatformIO build log, ELF, availab
 
 Record:
 
-| Metric | Stock Repeater | Room-only | Combined |
-|---|---:|---:|---:|
-| Build result | Pending | Pending | Pending |
+| Metric | Stock Repeater | Room-only | Combined production | Combined diagnostic |
+|---|---:|---:|---:|---:|
+| Build result | Pending | Pending | Pending | Pending |
 | Firmware BIN bytes | Pending | Pending | Pending | Pending |
-| Instrumented image BIN bytes | — | — | — | Pending |
-| ELF total bytes | Pending | Pending | Pending |
-| Flash ceiling / linker region | Confirm | Confirm | 708,608-byte configured upload ceiling |
-| `.text` + `.rodata` | Pending | Pending | Pending |
-| `.data` | Pending | Pending | Pending |
-| `.bss` | Pending | Pending | Pending |
-| Other RAM-resident sections | Pending | Pending | Pending |
+| ELF total bytes | Pending | Pending | Pending | Pending |
+| Flash ceiling / linker region | Confirm | Confirm | 708,608 bytes | 708,608 bytes |
+| `.text` + `.rodata` | Pending | Pending | Pending | Pending |
+| `.data` | Pending | Pending | Pending | Pending |
+| `.bss` | Pending | Pending | Pending | Pending |
+| Other RAM-resident sections | Pending | Pending | Pending | Pending |
 | Static RAM estimate | Pending | Pending | Pending | Pending |
 | Target `sizeof` inventory | — | — | — | Pending |
 | Remaining flash headroom | Pending | Pending | Pending | Pending |
-
 Use PlatformIO's final build summary and `arm-none-eabi-size -A` output. Do not add the external QSPI filesystem capacity to available MCU RAM or to the internal application flash budget. Confirm the linker script's actual memory regions before calculating headroom.
 
 ## Source-level RAM inventory (preliminary, not a measurement)
