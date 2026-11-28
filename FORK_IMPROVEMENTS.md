@@ -154,3 +154,12 @@ The Room-only image is 359,540 B BIN; the combined diagnostic image is 385,528 B
 **Engineering interpretation:** firmware size is within the linker region with substantial flash headroom. RAM is the more important remaining risk: the combined integration consumes an additional 12.7 KB of statically allocated RAM and reduces the linker's heap reservation by the same amount. We cannot call the device resource-safe until actual free-heap/largest-block, stack high-water, packet-pool/TX queue peaks and forwarding latency are measured under concurrent Repeater + Room load.
 
 **Next actions:** add or confirm low-overhead runtime heap/stack/queue instrumentation; inspect target-specific stack-frame hotspots and call paths; then perform the documented three-device bench protocol. No hardware has been flashed. PR #1 remains open and draft; no merge was performed.
+
+
+## Development log — diagnostic runtime packet/queue high-water counters (2026-11-28)
+
+Added opt-in runtime telemetry to the resource-audit build only. `StaticPoolPacketManager` now records peak checked-out packet count, peak outbound queue depth and peak delayed inbound queue depth when `RESOURCE_AUDIT` is defined. The SenseCAP diagnostic firmware prints a `RESOURCE_RUNTIME` sample after 10 seconds and every 60 seconds thereafter, including current free packet count and current outbound queue depth. These diagnostic-only fields and branches are not compiled into production firmware.
+
+**Scope limitation:** this is packet-pool/queue pressure telemetry, not a heap monitor. It does not report allocator free bytes, largest free block, heap fragmentation, stack high-water or worst-case call-chain stack. Those APIs have not yet been added because the exact nRF52 framework allocator and stack boundaries must be confirmed first. No runtime measurement exists until the diagnostic image is flashed and exercised on the target.
+
+**Verification:** pending CI for the instrumentation commits. Next: confirm diagnostic and production targets compile, then inspect the pinned nRF52 framework/toolchain for a safe allocator/stack measurement method before expanding instrumentation. Hardware remains unflashed; PR remains draft.
