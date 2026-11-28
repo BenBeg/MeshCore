@@ -194,13 +194,16 @@ void ClientACL::loadAtomic(FILESYSTEM* fs, const mesh::LocalIdentity& self_id) {
   if (valid[0] || valid[1]) {
     uint8_t selected = atomicSlotNewest(valid[0], headers[0].generation,
                                            valid[1], headers[1].generation);
-    // Load into a temporary array. A transient second-pass read/seek failure
-    // must not publish a partial ACL or prevent trying the older valid slot.
-    ClientInfo staged[MAX_CLIENTS];
-    int staged_count = 0;
+    // Use the existing ACL array as staging storage rather than allocating
+    // MAX_CLIENTS ClientInfo records on the embedded stack. num_clients is
+    // cleared before each attempt and only becomes visible after a full read.
     uint8_t loaded_slot = 0xFF;
+    num_clients = 0;
+    memset(clients, 0, sizeof(clients));
     bool loaded = atomicSlotLoadWithFallback(valid[0], valid[1], selected,
       [&](uint8_t slot) {
+        num_clients = 0;
+        memset(clients, 0, sizeof(clients));
 #if defined(RP2040_PLATFORM)
         File file = fs->open(paths[slot], "r");
 #else
@@ -209,35 +212,37 @@ void ClientACL::loadAtomic(FILESYSTEM* fs, const mesh::LocalIdentity& self_id) {
         if (!file) return false;
         bool ok = file.seek(sizeof(ACLSlotHeader));
         uint8_t record[ACL_RECORD_SIZE];
-        staged_count = 0;
         for (uint16_t i = 0; ok && i < headers[slot].count; i++) {
           if (file.read(record, sizeof(record)) != sizeof(record)) { ok = false; break; }
-          ClientInfo c;
-          memset(&c, 0, sizeof(c));
+          ClientInfo& client = clients[num_clients];
+          memset(&client, 0, sizeof(client));
           size_t p = 0;
           uint8_t pub_key[32];
           memcpy(pub_key, record + p, 32); p += 32;
-          c.permissions = record[p++];
-          memcpy(&c.extra.room.sync_since, record + p, 4); p += 4;
+          client.permissions = record[p++];
+          memcpy(&client.extra.room.sync_since, record + p, 4); p += 4;
           p += 2;
-          c.out_path_len = record[p++];
-          memcpy(c.out_path, record + p, 64); p += 64;
-          memcpy(c.shared_secret, record + p, PUB_KEY_SIZE);
-          c.id = mesh::Identity(pub_key);
-          self_id.calcSharedSecret(c.shared_secret, pub_key);
-          staged[staged_count++] = c;
+          client.out_path_len = record[p++];
+          memcpy(client.out_path, record + p, 64); p += 64;
+          memcpy(client.shared_secret, record + p, PUB_KEY_SIZE);
+          client.id = mesh::Identity(pub_key);
+          self_id.calcSharedSecret(client.shared_secret, pub_key);
+          num_clients++;
         }
         file.close();
         if (ok) loaded_slot = slot;
+        else {
+          num_clients = 0;
+          memset(clients, 0, sizeof(clients));
+        }
         return ok;
       });
     if (loaded) {
-      memcpy(clients, staged, staged_count * sizeof(ClientInfo));
-      num_clients = staged_count;
       _atomic_slot = loaded_slot;
       _atomic_generation = headers[loaded_slot].generation;
     } else {
       num_clients = 0;
+      memset(clients, 0, sizeof(clients));
       _atomic_slot = 1;
       _atomic_generation = 0;
     }
