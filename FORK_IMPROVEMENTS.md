@@ -50,6 +50,8 @@ For each target, the workflow captures PlatformIO's build report, ELF section si
 
 **Important comparison detail:** upstream `main` still defines `SenseCap_Solar_repeater` as the stock Repeater. The fork repurposes that environment for the combined image and adds the ExtraFS linker layout. Therefore, the baseline must be built from the pinned upstream revision, while Room-only and combined images are built from the fork revision.
 
+**First source-level RAM finding:** the combined `MyMesh` instance adds a second 32-client ACL, a fixed 32-entry Room post cache, a second 32-entry peer-index array, and increases the packet pool from 32 to 36 objects. The precise byte cost remains pending target ELF and runtime measurements; the formulas and evidence are recorded in [the resource audit](./docs/RESOURCE_AUDIT.md).
+
 **Status at this log entry:** PR workflow updated; no audit run or build-size result is yet available in the retrieved CI records. Do not infer a pass from the workflow change existing. The first successful run and its artifacts will be reviewed and summarized here.
 
 Full measurement protocol and result tables: [docs/RESOURCE_AUDIT.md](./docs/RESOURCE_AUDIT.md).
