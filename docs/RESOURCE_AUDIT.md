@@ -12,7 +12,8 @@ The GitHub Actions workflow `.github/workflows/pr-build-check.yml` (resource-aud
 |---|---|---|
 | Stock SenseCAP Repeater | Pinned upstream baseline `75b04ef06def54b348400cb1b138afb6749ffd4f` | Reference cost of the original Repeater |
 | SenseCAP Room Server | Current fork PR revision | Reference cost of the standalone Room application |
-| Combined Repeater + Room | Current fork PR revision | Actual target image under evaluation |
+| Combined Repeater + Room | Current fork PR revision | Actual production target image under evaluation |
+| Instrumented combined image | Current fork PR revision, `RESOURCE_AUDIT=1` | Prints target-compiler object sizes at boot; diagnostic only, not the production image |
 
 The upstream baseline is intentionally pinned so results remain reproducible. If the project rebases or changes its baseline, update this document and the workflow together.
 
@@ -29,15 +30,17 @@ Record:
 | Metric | Stock Repeater | Room-only | Combined |
 |---|---:|---:|---:|
 | Build result | Pending | Pending | Pending |
-| Firmware BIN bytes | Pending | Pending | Pending |
+| Firmware BIN bytes | Pending | Pending | Pending | Pending |
+| Instrumented image BIN bytes | — | — | — | Pending |
 | ELF total bytes | Pending | Pending | Pending |
 | Flash ceiling / linker region | Confirm | Confirm | 708,608-byte configured upload ceiling |
 | `.text` + `.rodata` | Pending | Pending | Pending |
 | `.data` | Pending | Pending | Pending |
 | `.bss` | Pending | Pending | Pending |
 | Other RAM-resident sections | Pending | Pending | Pending |
-| Static RAM estimate | Pending | Pending | Pending |
-| Remaining flash headroom | Pending | Pending | Pending |
+| Static RAM estimate | Pending | Pending | Pending | Pending |
+| Target `sizeof` inventory | — | — | — | Pending |
+| Remaining flash headroom | Pending | Pending | Pending | Pending |
 
 Use PlatformIO's final build summary and `arm-none-eabi-size -A` output. Do not add the external QSPI filesystem capacity to available MCU RAM or to the internal application flash budget. Confirm the linker script's actual memory regions before calculating headroom.
 
