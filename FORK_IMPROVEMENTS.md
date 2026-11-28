@@ -103,3 +103,10 @@ See [the integration design and verification notes](./docs/SENSECAP_REPEATER_ROO
 **Build workflow:** the PR Build Check for the same older revision completed successfully, including all 16 firmware matrix targets. That run did not contain the newly added resource-audit jobs and produced no resource artifacts. It therefore does not provide flash, static RAM or stack-frame measurements.
 
 **Next verification action:** start a new `PR Build Check` and `Run Unit Tests` workflow run from branch `feature/sensecap-repeater-room` (rather than using **Re-run failed jobs** on the older run). The resource audit is still pending. No firmware resource-fit claim is made from these results.
+
+
+## Development log — packet-manager heap accounting (2026-11-28)
+
+**Source audit:** inspected `src/helpers/StaticPoolPacketManager.cpp` and `.h` against the new target-size diagnostics. `StaticPoolPacketManager` constructs three `PacketQueue` objects; each queue dynamically allocates a packet-pointer array, priority array and schedule array sized to the pool. The manager also allocates every `mesh::Packet` object individually. At pool size 36, the diagnostic's separate packet-object and three-queue-array formulas correctly account for requested payload bytes, but `sizeof(StaticPoolPacketManager)` alone is only the manager/queue-object size and excludes those heap allocations.
+
+**Documentation update:** `docs/RESOURCE_AUDIT.md` now explicitly distinguishes linker-visible static RAM from packet-pool heap payload and notes allocator metadata, alignment and fragmentation as additional costs. This is source-level accounting only; target compiler output and runtime free-heap measurements are still required for actual resource acceptance.
