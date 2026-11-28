@@ -275,8 +275,9 @@ Do not treat the suggested labels as machine-parsed events; enter them as annota
 | B-10 | Mixed traffic | Room activity does not break/starve Repeater traffic |
 | B-11 | Sleep/wake | Idle sleep and due-work wake behavior are correct |
 | B-12 | Failure isolation | Room storage/service failure does not disable Repeater (requires controlled fault test) |
+| B-13 | Existing unreadable journal | On a sacrificial device/flash image, an existing unreadable Room journal is preserved, Room disables itself, and Repeater remains operational; it must not initialize an empty journal over the files |
 
-Overall status is **NOT READY** until A-01 through A-03 and B-01 through B-11 have evidence. B-12 requires a separate controlled fault-injection test and should not be attempted by corrupting the user's only device.
+Overall status is **NOT READY** until A-01 through A-03 and B-01 through B-11 have evidence. B-12 and B-13 require separate controlled fault-injection tests on a sacrificial device or verified restorable flash image; never corrupt the user's only device.
 
 ## 10. Copy/paste run record
 
@@ -330,8 +331,8 @@ Before any flash:
 
 ## 12. Current readiness
 
-- Native unit tests: passed on PR head `b84d188954dc0e79a9c2a73628be834e754d33dc`.
-- Full 16-target firmware matrix: passed on the same head, including the SenseCAP Repeater and ThinkNode M5 BLE companion target.
+- Native unit tests: 80/80 passed on code commit `524fce7c21009c3e4f029f5d08a10a187cab0816`. A later ACL recovery test initially failed to compile because it used Unity headers instead of GoogleTest; the test was corrected, and further Room/ACL recovery tests have since been added. Fresh CI for current branch head `efebf5171f9cd3c5396db50ab75d3e5b7018cad2` is still pending.
+- Full 16-target firmware matrix: passed on `bcbd534a3021bfa4bed72495aff8ea7c637c62de`, including the SenseCAP Repeater and ThinkNode M5 BLE companion target. Subsequent firmware changes have not yet received a fresh matrix run.
 - Physical test execution: not started.
 - Firmware flashed: no.
 - RF compliance gate: unresolved; no over-the-air transmission authorized by this protocol.
